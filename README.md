@@ -41,7 +41,7 @@ The starter kit's default routes:
 
 ### Prerequisites
 
-- [PHP](https://www.php.net/) v8.3+.
+- [PHP](https://www.php.net/) v8.4+.
 - [Composer](https://getcomposer.org/) v2.
 - [Node.js](https://nodejs.org/) v22.18+ (or v20.19+) and npm.
 
