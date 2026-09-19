@@ -181,7 +181,24 @@ The full set is in `.env.example`. The ones the template relies on:
 
 ## Deployment
 
-Deployment is not yet set up, although the production image is ready to deploy. The `tests` GitHub Actions workflow runs on pushes to `main` and on pull requests, against a SQL Server service container. Azure provisioning and deployment are planned in later tasks.
+The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. Azure provisioning and the Azure sign-in setup are planned in later tasks, so until those exist the build and push work and the Azure steps fail.
+
+The workflow takes every name from the repository name, so nothing needs editing per app:
+
+- The image is `ghcr.io/<owner>/<repo>`, tagged with the commit SHA and `latest`, built for `linux/amd64`.
+- The container app is named `<repo>`, in the resource group `rg-<repo>`.
+
+The workflow signs in to Azure with OIDC, so there is no client secret to store. Add these repository secrets (Settings, Secrets and variables, Actions):
+
+| Secret                  | Description                                                 |
+| ----------------------- | ----------------------------------------------------------- |
+| `AZURE_CLIENT_ID`       | Client ID of the Microsoft Entra app registration for OIDC. |
+| `AZURE_TENANT_ID`       | ID of the Microsoft Entra tenant.                           |
+| `AZURE_SUBSCRIPTION_ID` | ID of the Azure subscription that holds the app.            |
+
+To deploy automatically on merges, add a `push` trigger for `main` to the workflow once a manual deploy has succeeded.
+
+The `tests` workflow runs on pushes to `main` and on pull requests, against a SQL Server service container.
 
 ## Tools & Technologies
 
