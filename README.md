@@ -2,11 +2,11 @@
 
 A GitHub template for new Laravel apps: Vue (Inertia), Pest, Pint and Larastan, Docker, CI, and one-command Azure provisioning with OIDC deploys.
 
-The template currently provides the base application: a Laravel 13 app with the Vue starter kit, Pest for testing, Pint and Larastan for code quality, and Dependabot for dependency updates. Docker, SQL Server, and Azure provisioning and deployment are planned and not yet in place.
+The template currently provides the base application: a Laravel 13 app with the Vue starter kit, Pest for testing, Pint and Larastan for code quality, and Dependabot for dependency updates. A Docker development environment is available through Laravel Sail. SQL Server, and Azure provisioning and deployment, are planned and not yet in place.
 
 ## Architecture
 
-The application is a Laravel monolith that renders its Vue 3 pages server-side through Inertia.js, so routing and controllers stay in Laravel while pages are Vue components built with Vite. Authentication is handled by Laravel Fortify with session-based sign-in. Data is stored in a SQLite database file, which the installer creates and migrates. SQL Server is the intended database once the Docker setup provides one locally.
+The application is a Laravel monolith that renders its Vue 3 pages server-side through Inertia.js, so routing and controllers stay in Laravel while pages are Vue components built with Vite. Authentication is handled by Laravel Fortify with session-based sign-in. Data is stored in a SQLite database file, which the installer creates and migrates. SQL Server is the intended database and is planned in a later task.
 
 ## Key Interfaces
 
@@ -34,6 +34,7 @@ The starter kit's default routes:
 - **[Pint](https://laravel.com/docs/13.x/pint)** — PHP code style.
 - **[Larastan](https://github.com/larastan/larastan)** — PHP static analysis.
 - **[SQLite](https://www.sqlite.org/docs.html)** — Starter database.
+- **[Laravel Sail](https://laravel.com/docs/13.x/sail)** — Docker development environment.
 - **[Dependabot](https://docs.github.com/en/code-security/dependabot)** — Automated dependency update pull requests.
 - **[GitHub Actions](https://docs.github.com/en/actions)** — Runs the test workflow.
 
@@ -44,6 +45,7 @@ The starter kit's default routes:
 - [PHP](https://www.php.net/) v8.4+.
 - [Composer](https://getcomposer.org/) v2.
 - [Node.js](https://nodejs.org/) v22.18+ (or v20.19+) and npm.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/), only if you use the Sail environment.
 
 ### Setup
 
@@ -65,6 +67,54 @@ The starter kit's default routes:
     ```bash
     composer run dev
     ```
+
+### Running With Docker (Sail)
+
+Laravel Sail runs the app in a container with PHP 8.4, Node and Composer, so nothing beyond Docker needs installing. The app uses SQLite inside the container.
+
+1. Copy the environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+2. Install the PHP dependencies. The `sail` script lives in `vendor`, so if PHP and Composer aren't installed locally, use a throwaway container (with them installed, `composer install` works too):
+
+    ```bash
+    docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd):/var/www/html" -w /var/www/html laravelsail/php84-composer:latest composer install --ignore-platform-reqs
+    ```
+
+3. Start the environment. The first run builds the image and takes several minutes:
+
+    ```bash
+    ./vendor/bin/sail up -d
+    ```
+
+4. Generate the app key, run the migrations and install the frontend dependencies inside the container:
+
+    ```bash
+    ./vendor/bin/sail artisan key:generate
+    ./vendor/bin/sail artisan migrate
+    ./vendor/bin/sail npm install
+    ```
+
+5. Start the frontend development server:
+
+    ```bash
+    ./vendor/bin/sail npm run dev
+    ```
+
+The app is available at `http://localhost:8000`.
+
+Run any command in the container by prefixing it with `./vendor/bin/sail`, for example `./vendor/bin/sail composer test`. Stop the environment with:
+
+```bash
+./vendor/bin/sail down
+```
+
+Install the frontend dependencies either on your machine or in the container, not both. They use different native binaries, so running `npm install` in the container replaces a `node_modules` installed locally.
+
+If another project already uses port `8000` or `5173`, Sail fails to start with a "port is already allocated" error. Set `APP_PORT` or `VITE_PORT` in `.env` to free ports and restart.
 
 ### Testing Locally
 
@@ -94,18 +144,21 @@ Once running, the app is available at `http://localhost:8000`. You can register 
 
 The full set is in `.env.example`. The ones the template relies on:
 
-| Variable           | Description                                                        |
-| ------------------ | ------------------------------------------------------------------ |
-| `APP_NAME`         | Application name, also exposed to the frontend as `VITE_APP_NAME`. |
-| `APP_ENV`          | Environment name, for example `local` or `production`.             |
-| `APP_KEY`          | Encryption key, generated by `php artisan key:generate`.           |
-| `APP_DEBUG`        | Shows detailed errors when `true`. Set to `false` in production.   |
-| `APP_URL`          | Base URL of the app, `http://localhost:8000` locally.              |
-| `DB_CONNECTION`    | Database driver, `sqlite` by default.                              |
-| `SESSION_DRIVER`   | Where sessions are stored, `database` by default.                  |
-| `QUEUE_CONNECTION` | Queue backend, `database` by default.                              |
-| `CACHE_STORE`      | Cache backend, `database` by default.                              |
-| `MAIL_MAILER`      | Mail transport, `log` by default so emails are written to the log. |
+| Variable               | Description                                                        |
+| ---------------------- | ------------------------------------------------------------------ |
+| `APP_NAME`             | Application name, also exposed to the frontend as `VITE_APP_NAME`. |
+| `APP_ENV`              | Environment name, for example `local` or `production`.             |
+| `APP_KEY`              | Encryption key, generated by `php artisan key:generate`.           |
+| `APP_DEBUG`            | Shows detailed errors when `true`. Set to `false` in production.   |
+| `APP_URL`              | Base URL of the app, `http://localhost:8000` locally.              |
+| `DB_CONNECTION`        | Database driver, `sqlite` by default.                              |
+| `APP_PORT`             | Host port the Sail app is served on, `8000` by default.            |
+| `VITE_PORT`            | Host port for the Vite development server, `5173` by default.      |
+| `WWWUSER` / `WWWGROUP` | User and group IDs the Sail container runs as, `1000` by default.  |
+| `SESSION_DRIVER`       | Where sessions are stored, `database` by default.                  |
+| `QUEUE_CONNECTION`     | Queue backend, `database` by default.                              |
+| `CACHE_STORE`          | Cache backend, `database` by default.                              |
+| `MAIL_MAILER`          | Mail transport, `log` by default so emails are written to the log. |
 
 ## Deployment
 
@@ -122,6 +175,7 @@ Deployment is not yet set up. The `tests` GitHub Actions workflow runs on pushes
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![Pest](https://img.shields.io/badge/Pest-F472B6?style=for-the-badge)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Composer](https://img.shields.io/badge/Composer-885630?style=for-the-badge&logo=composer&logoColor=white)
 ![NPM](https://img.shields.io/badge/NPM-CB3837?style=for-the-badge&logo=npm&logoColor=white)
 ![Dependabot](https://img.shields.io/badge/Dependabot-025E8C?style=for-the-badge&logo=dependabot&logoColor=white)
