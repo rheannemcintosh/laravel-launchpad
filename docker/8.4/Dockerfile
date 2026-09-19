@@ -85,6 +85,23 @@ RUN if [ -n "$PHP_EXTENSIONS" ]; then \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
 fi
 
+# Microsoft SQL Server driver: ODBC + sqlsrv / pdo_sqlsrv.
+# Microsoft ships msodbcsql18 for arm64 on Ubuntu noble, so this stays native on Apple Silicon.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends php-pear g++ \
+    && curl -fsSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev \
+    && pecl install sqlsrv pdo_sqlsrv \
+    && printf "; priority=20\nextension=sqlsrv.so\n" > /etc/php/8.4/mods-available/sqlsrv.ini \
+    && printf "; priority=30\nextension=pdo_sqlsrv.so\n" > /etc/php/8.4/mods-available/pdo_sqlsrv.ini \
+    && phpenmod sqlsrv pdo_sqlsrv \
+    && apt-get -y autoremove \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 RUN setcap "cap_net_bind_service=+ep" /usr/bin/php8.4
 
 RUN userdel -r ubuntu

@@ -21,7 +21,53 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+        depends_on:
+            mssql:
+                condition: service_healthy
+            mssql-init:
+                condition: service_completed_successfully
+
+    mssql:
+        image: 'mcr.microsoft.com/mssql/server:2022-latest'
+        platform: linux/amd64
+        ports:
+            - '127.0.0.1:${FORWARD_DB_PORT:-1433}:1433'
+        environment:
+            ACCEPT_EULA: 'Y'
+            MSSQL_SA_PASSWORD: '${DB_PASSWORD}'
+        volumes:
+            - 'sail-mssql:/var/opt/mssql'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" -b
+            interval: 10s
+            timeout: 5s
+            retries: 20
+            start_period: 30s
+
+    mssql-init:
+        image: 'mcr.microsoft.com/mssql/server:2022-latest'
+        platform: linux/amd64
+        environment:
+            MSSQL_SA_PASSWORD: '${DB_PASSWORD}'
+            DB_DATABASE: '${DB_DATABASE:-laravel}'
+        entrypoint: ['/bin/bash', '/usr/local/bin/create-databases.sh']
+        volumes:
+            - './docker/mssql/create-databases.sh:/usr/local/bin/create-databases.sh:ro'
+        networks:
+            - sail
+        depends_on:
+            mssql:
+                condition: service_healthy
+        restart: 'no'
 
 networks:
     sail:
         driver: bridge
+
+volumes:
+    sail-mssql:
+        driver: local
