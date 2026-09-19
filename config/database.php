@@ -112,6 +112,8 @@ return [
             'prefix_indexes' => true,
             'encrypt' => env('DB_ENCRYPT', 'yes'),
             'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+            // Give a serverless Azure SQL database time to resume from auto-pause.
+            'login_timeout' => env('DB_LOGIN_TIMEOUT', 60),
         ],
 
     ],
