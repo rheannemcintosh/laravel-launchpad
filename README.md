@@ -181,7 +181,31 @@ The full set is in `.env.example`. The ones the template relies on:
 
 ## Deployment
 
-The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. Azure provisioning and the Azure sign-in setup are planned in later tasks, so until those exist the build and push work and the Azure steps fail.
+### Provisioning Azure
+
+`deploy/azure-provision.sh` creates everything an app needs in Azure with one command: a resource group, an Azure SQL server with a serverless database on the free offer, a Container Apps environment, the container app (which scales to zero) and a monthly budget alert. It names everything from the repository name, matching the `deploy` workflow below.
+
+1. Run the `deploy` workflow once from the Actions tab so the image exists in `ghcr.io`. Its Azure steps fail at this point, which is expected.
+
+2. Log in to Azure:
+
+    ```bash
+    az login
+    ```
+
+3. Run the script from a clone of the repository. `SQL_ADMIN_PASSWORD` must be a strong password:
+
+    ```bash
+    SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/azure-provision.sh
+    ```
+
+Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
+
+Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until an identity provider is configured, which is planned in a later task.
+
+### Deploy Workflow
+
+The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. The Azure sign-in setup is planned in a later task, so until it exists the build and push work and the Azure login step fails.
 
 The workflow takes every name from the repository name, so nothing needs editing per app:
 

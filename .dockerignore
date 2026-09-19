@@ -6,6 +6,7 @@ Dockerfile
 .dockerignore
 compose.yaml
 docker
+deploy
 node_modules
 vendor
 public/build
