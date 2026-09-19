@@ -127,6 +127,30 @@ The tests run against the `laravel_testing` database, so they need the environme
     ./vendor/bin/sail npm run check:fix
     ```
 
+### Production Image
+
+The `Dockerfile` in the repo root builds the image that gets deployed, separate from the Sail development image in `docker/8.4`. A first stage installs the production PHP dependencies and builds the frontend. A second stage copies the results into a smaller runtime image with nginx, php-fpm and the SQL Server drivers. The container runs as a non-root user and serves the app on port `8080`. On start it caches the config, routes and views, links storage and runs the migrations.
+
+1. Build the image:
+
+    ```bash
+    docker build -t laravel-launchpad .
+    ```
+
+2. Run it. The image has no `.env` and reads its settings from environment variables, so pass the app key and the database settings. This example uses the Sail SQL Server container, so the Sail environment must be running, and the network name is the folder name followed by `_sail`:
+
+    ```bash
+    docker run --rm -p 8090:8080 --network laravel-launchpad_sail \
+      -e APP_KEY="$(./vendor/bin/sail artisan key:generate --show)" \
+      -e APP_URL=http://localhost:8090 \
+      -e DB_CONNECTION=sqlsrv -e DB_HOST=mssql -e DB_PORT=1433 \
+      -e DB_DATABASE=laravel -e DB_USERNAME=sa -e DB_PASSWORD=Your_strong_password123 \
+      -e DB_ENCRYPT=yes -e DB_TRUST_SERVER_CERTIFICATE=true \
+      laravel-launchpad
+    ```
+
+The app is then available at `http://localhost:8090`. Stop it with Ctrl+C. Use a real `DB_PASSWORD` and set `DB_TRUST_SERVER_CERTIFICATE` to `false` for anything other than local testing.
+
 ### Environment Variables
 
 The full set is in `.env.example`. The ones the template relies on:
@@ -157,7 +181,7 @@ The full set is in `.env.example`. The ones the template relies on:
 
 ## Deployment
 
-Deployment is not yet set up. The `tests` GitHub Actions workflow runs on pushes to `main` and on pull requests, against a SQL Server service container. Azure provisioning and deployment are planned in later tasks.
+Deployment is not yet set up, although the production image is ready to deploy. The `tests` GitHub Actions workflow runs on pushes to `main` and on pull requests, against a SQL Server service container. Azure provisioning and deployment are planned in later tasks.
 
 ## Tools & Technologies
 
