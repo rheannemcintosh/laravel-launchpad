@@ -26,8 +26,9 @@ jobs:
           persist-credentials: false
 
       # Names come from the repository name so nothing is hardcoded per app.
-      # The provisioning script must create resources with the same names:
-      # a container app called <repo> in the resource group rg-<repo>.
+      # The provisioning and OIDC scripts must use the same names: a container
+      # app called <repo> in the resource group rg-<repo>. Their naming rules are
+      # in deploy/lib.sh, so change the two together.
       - name: Derive names
         run: |
           repo="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"

@@ -6,8 +6,8 @@
 # monthly budget alert.
 #
 # Everything is named from APP_NAME, which defaults to the repository name from
-# `git remote origin`. The deploy workflow derives the same names from the
-# repository name, so the two must agree:
+# `git remote origin`. The naming rules live in lib.sh, and the deploy workflow
+# derives the same names from the repository name, so they must all agree:
 #
 #   resource group  rg-<app>
 #   container app   <app>
@@ -60,40 +60,17 @@ set -euo pipefail
 # Settings
 # ----------------------------------------------------------------------------
 
-# Owner and repository from the git remote, e.g. git@github.com:owner/repo.git
-# or https://github.com/owner/repo.git. Prints "owner repo", or nothing.
-remote_owner_and_repo() {
-  git remote get-url origin 2>/dev/null \
-    | sed -E 's#\.git$##; s#^(git@github\.com:|https://github\.com/)([^/]+)/([^/]+)$#\2 \3#' \
-    | grep -E '^[^ /]+ [^ /]+$' || true
-}
+# App naming and validation live in lib.sh, shared with the OIDC setup script.
+# shellcheck source=deploy/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-remote="$(remote_owner_and_repo)"
-
-APP_NAME="${APP_NAME:-}"
-if [[ -z "$APP_NAME" && -n "$remote" ]]; then
-  APP_NAME="$(printf '%s' "${remote#* }" | tr '[:upper:]' '[:lower:]')"
-fi
-if [[ -z "$APP_NAME" ]]; then
-  echo "ERROR: Set APP_NAME, or run this from a clone whose 'origin' is a GitHub repository." >&2
-  exit 1
-fi
-if [[ ! "$APP_NAME" =~ ^[a-z]([a-z0-9-]{0,30}[a-z0-9])$ || "$APP_NAME" == *--* ]]; then
-  echo "ERROR: APP_NAME '$APP_NAME' is not valid." >&2
-  echo "       Use 2-32 lowercase letters, numbers and single hyphens, starting with a" >&2
-  echo "       letter and ending with a letter or number." >&2
-  exit 1
-fi
+load_remote
+resolve_app_name
 
 # Image names must be lowercase, so lowercase the owner however it was given.
-GITHUB_OWNER="${GITHUB_OWNER:-}"
-if [[ -z "$GITHUB_OWNER" && -n "$remote" ]]; then
-  GITHUB_OWNER="${remote%% *}"
-fi
-GITHUB_OWNER="$(printf '%s' "$GITHUB_OWNER" | tr '[:upper:]' '[:lower:]')"
+GITHUB_OWNER="$(lowercase "${GITHUB_OWNER:-$REMOTE_OWNER}")"
 
 LOCATION="${LOCATION:-uksouth}"
-RESOURCE_GROUP="rg-$APP_NAME"
 
 # Leave SQL_SERVER empty to reuse the server already in the resource group, or to
 # generate a globally unique name on a first-time provision. Set it explicitly to
@@ -379,8 +356,8 @@ if [[ "$FIRST_PROVISION" == true ]]; then
 Every request currently gets HTTP 403 — the app is not readable by anyone.
 
 NEXT STEPS
-  1. Run the deploy workflow from the Actions tab so the app runs a commit-tagged
-     image, if you haven't. It needs the AZURE_* repository secrets.
+  1. Set up the deploy workflow's Azure sign-in with ./deploy/azure-oidc-setup.sh,
+     then run the deploy workflow so the app runs a commit-tagged image.
   2. Add a Microsoft identity provider to the container app's authentication
      (Easy Auth) and assign only your account. That step also switches the
      unauthenticated action from 403 to the sign-in redirect.

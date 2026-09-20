@@ -203,16 +203,42 @@ Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `g
 
 Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until an identity provider is configured, which is planned in a later task.
 
+### Deploy Sign-In (OIDC)
+
+The `deploy` workflow signs in to Azure with OIDC, so no password is stored anywhere. `deploy/azure-oidc-setup.sh` sets that up for an app. It limits the sign-in to the app's own resource group, so run the provisioning script first.
+
+1. Log in to Azure and GitHub if you haven't:
+
+    ```bash
+    az login
+    ```
+
+    ```bash
+    gh auth login
+    ```
+
+2. Run the script from a clone of the repository:
+
+    ```bash
+    ./deploy/azure-oidc-setup.sh
+    ```
+
+The script creates an app registration called `<repo>-deploy`, gives it the Contributor role on `rg-<repo>` only, adds a trust rule for the repository's `main` branch and sets the three repository secrets listed below. Re-running is safe. No client secret is created. Set `TRUST_BRANCH` to trust a different branch. If `gh` isn't available, the script prints the three values so you can add them by hand.
+
+If a deploy fails with the error `AADSTS700213`, Azure names the subject it received. Re-run the script with `OIDC_SUBJECT` set to exactly that value.
+
+The scripts in `deploy/` share their naming rules in `deploy/lib.sh`, and the `deploy` workflow derives the same names from the repository name.
+
 ### Deploy Workflow
 
-The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. The Azure sign-in setup is planned in a later task, so until it exists the build and push work and the Azure login step fails.
+The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. Until the deploy sign-in above is set up, the build and push work and the Azure login step fails.
 
 The workflow takes every name from the repository name, so nothing needs editing per app:
 
 - The image is `ghcr.io/<owner>/<repo>`, tagged with the commit SHA and `latest`, built for `linux/amd64`.
 - The container app is named `<repo>`, in the resource group `rg-<repo>`.
 
-The workflow signs in to Azure with OIDC, so there is no client secret to store. Add these repository secrets (Settings, Secrets and variables, Actions):
+The workflow needs these repository secrets. The OIDC setup script sets them for you, or you can add them by hand under Settings, Secrets and variables, Actions. They are identifiers, not passwords:
 
 | Secret                  | Description                                                 |
 | ----------------------- | ----------------------------------------------------------- |
