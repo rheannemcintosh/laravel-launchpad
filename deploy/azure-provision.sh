@@ -36,6 +36,8 @@
 #   LOCATION            default: uksouth
 #   IMAGE               default: ghcr.io/<owner>/<app>:latest
 #   APP_TITLE           default: APP_NAME title-cased, e.g. "Laravel Launchpad".
+#   APP_TAGLINE         default: the APP_TAGLINE in .env.example, where `npm run brand`
+#                       writes it. Left unset if there is none.
 #   SQL_SERVER          pin an existing server when the resource group has several.
 #   GHCR_USERNAME, GHCR_PAT   pull credentials for a private ghcr.io package.
 #   APP_KEY             default: generated on the first provision only.
@@ -94,6 +96,16 @@ fi
 
 # Display name for APP_NAME in the app, e.g. laravel-launchpad -> Laravel Launchpad.
 APP_TITLE="${APP_TITLE:-$(printf '%s' "$APP_NAME" | tr '-' ' ' | awk '{for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2)} 1')}"
+
+# Tagline shown on the home page and dashboard. It defaults to the one in
+# .env.example, where `npm run brand` writes it, so the deployed app matches.
+if [[ -z "${APP_TAGLINE:-}" ]]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/.env.example" ]]; then
+    APP_TAGLINE="$(sed -n 's/^APP_TAGLINE=//p' "$REPO_ROOT/.env.example" | head -1 | sed 's/^"\(.*\)"$/\1/')"
+  fi
+fi
+APP_TAGLINE="${APP_TAGLINE:-}"
 
 # Only needed if the ghcr.io package is private.
 GHCR_USERNAME="${GHCR_USERNAME:-}"
@@ -219,6 +231,10 @@ ENV_VARS=(
   CACHE_STORE=file
   QUEUE_CONNECTION=sync
 )
+
+if [[ -n "$APP_TAGLINE" ]]; then
+  ENV_VARS+=("APP_TAGLINE=$APP_TAGLINE")
+fi
 
 if az containerapp show -g "$RESOURCE_GROUP" -n "$ACA_APP" --output none 2>/dev/null; then
   FIRST_PROVISION=false

@@ -2,7 +2,7 @@
 
 A GitHub template for new Laravel apps: Vue (Inertia), Pest, Pint and Larastan, Docker, CI, and one-command Azure provisioning with OIDC deploys.
 
-The template currently provides the base application: a Laravel 13 app with the Vue starter kit, Pest for testing, Pint and Larastan for code quality, and Dependabot for dependency updates. A Docker development environment with a SQL Server database is available through Laravel Sail. Azure provisioning and deployment are planned and not yet in place.
+The template provides the base application: a Laravel 13 app with the Vue starter kit, Pest for testing, Pint and Larastan for code quality, and Dependabot for dependency updates. A Docker development environment with a SQL Server database is available through Laravel Sail. A production image, a GitHub Actions workflow that tests every change and deploys merges to Azure Container Apps, and scripts that provision, sign in to, and tear down the Azure resources are included. A neutral home page and dashboard carry no branding, and one command gives a new app its own name, tagline and icon.
 
 ## Architecture
 
@@ -182,13 +182,23 @@ The full set is in `.env.example`. The ones the template relies on:
 
 ### Branding
 
-The template ships with a neutral home page and dashboard, and no Laravel branding. The name, tagline and icon each live in one place, so a new app can be given its own without hunting through the code:
+The template ships with a neutral home page and dashboard, and no Laravel branding. A new app gets its own name, tagline and icon with one command, run from the root of the app after `npm install`:
 
-- **Name:** `APP_NAME` in `.env`. It is shown on the home page, the dashboard, the sidebar, the sign-in pages, the browser tab and emails. It is read when the app runs, so changing it does not need a rebuild of the front end.
-- **Tagline:** `APP_TAGLINE` in `.env`, shown on the home page and the dashboard.
-- **Icon:** the Lucide icon in `resources/js/components/AppLogoIcon.vue`, which is used in the sidebar, the sign-in pages, the home page and the dashboard, plus the browser icons in `public/`: `favicon.svg`, `favicon.ico` and `apple-touch-icon.png`.
+```bash
+npm run brand -- --name "Acme Tracker" --tagline "Track everything." --icon brain
+```
 
-In `.env.example` these are placeholders (`My App` and a generic tagline) for you to replace.
+Each option is optional, but at least one is needed. It can be run again whenever you want to change them, and a run that changes nothing leaves the files as they were.
+
+| Option      | What it changes                                                                                                                                                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name`    | `APP_NAME` in `.env` and `.env.example`. Shown on the home page, the dashboard, the sidebar, the sign-in pages, the browser tab and emails. It is read when the app runs, so it needs no rebuild.                                        |
+| `--tagline` | `APP_TAGLINE` in `.env` and `.env.example`, shown on the home page and the dashboard. Also read when the app runs.                                                                                                                       |
+| `--icon`    | A [Lucide](https://lucide.dev/icons) icon name such as `brain` or `heart-pulse`. It swaps the icon in `resources/js/components/AppLogoIcon.vue` and rebuilds `public/favicon.svg` from the same shapes. Rebuild the front end to see it. |
+
+Nothing is written unless every value is valid. An unknown icon name, or a name or tagline containing a double quote, backslash or dollar sign (which would break the `.env` file), stops it with a message and changes nothing. The name and tagline can also be set by hand in `.env`.
+
+`public/favicon.ico` and `public/apple-touch-icon.png` are pictures, which need an image converter. They are rebuilt when `rsvg-convert` is installed (`brew install librsvg`, or `apt install librsvg2-bin`) and left as they were otherwise, with a note. They are only used by old browsers and the iOS home screen. `.env.example` holds placeholders (`My App` and a generic tagline) until you run the command.
 
 ## Deployment
 
@@ -210,7 +220,7 @@ In `.env.example` these are placeholders (`My App` and a generic tagline) for yo
     SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/azure-provision.sh
     ```
 
-Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
+Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The deployed app's name is `APP_TITLE` (the repository name in title case by default) and its tagline is the `APP_TAGLINE` in `.env.example`, so run `npm run brand` first if you want the live app to carry your tagline. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
 
 Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until sign-in is set up, which the next section covers.
 
