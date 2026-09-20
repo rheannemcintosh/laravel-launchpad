@@ -99,7 +99,6 @@ APP_TITLE="${APP_TITLE:-$(printf '%s' "$APP_NAME" | tr '-' ' ' | awk '{for (i = 
 GHCR_USERNAME="${GHCR_USERNAME:-}"
 GHCR_PAT="${GHCR_PAT:-}"
 
-BUDGET_NAME="$APP_NAME-monthly"
 BUDGET_AMOUNT="${BUDGET_AMOUNT:-1}"
 if [[ ! "$BUDGET_AMOUNT" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
   echo "ERROR: BUDGET_AMOUNT '$BUDGET_AMOUNT' is not a number." >&2

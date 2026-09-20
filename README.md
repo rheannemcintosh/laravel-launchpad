@@ -250,6 +250,35 @@ To deploy automatically on merges, add a `push` trigger for `main` to the workfl
 
 The `tests` workflow runs on pushes to `main` and on pull requests, against a SQL Server service container.
 
+### Tearing Down An App
+
+`deploy/azure-teardown.sh` removes everything an app created in Azure, so a test environment can be thrown away as quickly as it was set up. Deleting the resource group on its own would leave the deploy identity in Microsoft Entra and the secrets in GitHub behind, so use the script:
+
+```bash
+./deploy/azure-teardown.sh
+```
+
+It removes:
+
+- The budget alert, which sits on the resource group rather than inside it, so the script deletes it explicitly first.
+- The resource group `rg-<repo>` with everything in it: the container app, the database server and database, and the Container Apps environment.
+- The app registrations `<repo>-deploy` and, if it exists, `<repo>-easyauth` in Microsoft Entra.
+- The `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` repository secrets, but only for the app named after the repository, because the repository has one set of them and they belong to that app.
+
+The script lists everything it will delete and asks you to type the app name before it deletes anything. A resource group that contains nothing the provisioning script creates for the app is refused, so an unrelated group with the same name is never touched. Deleting a group with a database in it can take ten minutes or more, and the script waits for it to finish.
+
+These settings change how it behaves:
+
+| Setting                | Effect                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `DRY_RUN=1`            | Lists what would be removed and deletes nothing.                                                           |
+| `FORCE=1`              | Skips the typed confirmation, for automation. The check on the resource group still applies.               |
+| `NO_WAIT=1`            | Returns without waiting for the resource group deletion to finish.                                         |
+| `REMOVE_SECRETS=false` | Leaves the repository secrets alone.                                                                       |
+| `APP_NAME=<name>`      | Removes a differently named app, such as a throwaway one. The repository secrets are left alone for these. |
+
+Running the script again is safe. It only removes what still exists.
+
 ## Tools & Technologies
 
 ![PHP](https://img.shields.io/badge/PHP-777BB4?style=for-the-badge&logo=php&logoColor=white)

@@ -43,6 +43,7 @@ lowercase() {
 # load_remote to have run first.
 #
 #   RESOURCE_GROUP  rg-<app>
+#   BUDGET_NAME     <app>-monthly, the budget alert on that resource group
 resolve_app_name() {
   APP_NAME="${APP_NAME:-}"
   if [[ -z "$APP_NAME" && -n "$REMOTE_REPO" ]]; then
@@ -59,4 +60,5 @@ resolve_app_name() {
     exit 1
   fi
   RESOURCE_GROUP="rg-$APP_NAME"
+  BUDGET_NAME="$APP_NAME-monthly"
 }
