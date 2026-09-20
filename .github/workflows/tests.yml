@@ -83,18 +83,3 @@ jobs:
 
       - name: Run CI Checks
         run: composer ci:check
-
-  # Deploys the merged commit, but only after the tests above have passed, so a
-  # change that breaks them is never released. It runs only on a merge to main,
-  # and only when the repository has opted in with the DEPLOY_ON_MERGE variable.
-  # A new app made from the template has no such variable until its Azure setup is
-  # done, so its merges show this job as skipped instead of failing.
-  deploy:
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ON_MERGE == 'true'
-    permissions:
-      contents: read
-      packages: write # push the image to ghcr.io
-      id-token: write # request an OIDC token for azure/login
-    uses: ./.github/workflows/deploy.yml
-    secrets: inherit

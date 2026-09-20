@@ -1,12 +1,18 @@
 name: deploy
 
-# Runs when started by hand from the Actions tab, and when the tests workflow
-# calls it after the tests pass on a merge to main. That call only happens when
-# the repository has opted in with the DEPLOY_ON_MERGE variable, which the OIDC
-# setup script sets (see the Deployment section of the README).
+# Starts by itself when a change is merged to main, and can be started by hand
+# from the Actions tab. A merge only deploys when the repository has opted in with
+# the DEPLOY_ON_MERGE variable, which the OIDC setup script sets (see the
+# Deployment section of the README). A manual run always deploys.
+#
+# This does not wait for the tests workflow, which starts at the same moment. The
+# safeguard is that the pull request's tests have already passed before it is
+# merged, so require the `ci` check on main in the repository settings.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-  workflow_call:
 
 # One deploy at a time, and never cancel one that is already updating the app: a
 # newer run waits its turn instead. GitHub keeps only the newest waiting run.
@@ -21,6 +27,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_ON_MERGE == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

@@ -281,10 +281,12 @@ The `tests` workflow runs on pushes to `main` and on pull requests, against a SQ
 
 #### Deploy On Merge
 
-On a push to `main`, the `tests` workflow runs its tests first and then calls the `deploy` workflow, so a change that fails the tests is never released. Two things must be true for the deploy to run:
+When a change is merged to `main`, the `deploy` workflow starts by itself. Two things must be true for it to deploy:
 
-- The push is to `main`. Pull requests never deploy.
-- The repository variable `DEPLOY_ON_MERGE` is `true`. The OIDC setup script sets it. A new app made from the template has no such variable until its Azure setup is done, so its merges show the deploy job as skipped instead of failing.
+- The change is merged to `main`. Pull requests never deploy, and never show a deploy check.
+- The repository variable `DEPLOY_ON_MERGE` is `true`. The OIDC setup script sets it. A new app made from the template has no such variable until its Azure setup is done, so a merge there shows the deploy as skipped in the Actions list instead of failing.
+
+The deploy does not wait for the `tests` workflow, which starts at the same moment on a merge. The safeguard is that the pull request's tests have already passed before you merge it, so require the `ci` check on `main` in the repository's branch settings and only merge green pull requests.
 
 Deploys run one at a time. A newer merge waits for a deploy that is already updating the app instead of interrupting it, and if several merges queue up, only the newest waiting one runs.
 

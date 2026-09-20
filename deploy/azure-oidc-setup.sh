@@ -11,7 +11,7 @@
 #                       on one branch (main by default) and nothing else
 #   repository secrets  AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 #   repository variable DEPLOY_ON_MERGE=true, which turns on the deploy that runs
-#                       after the tests pass on a merge to main
+#                       when a change is merged to main
 #
 # No client secret is created, so there is nothing to store or rotate. The three
 # secrets are identifiers, not passwords.
@@ -248,8 +248,7 @@ EOF
 
 if [[ "$deploy_on_merge" == "on" ]]; then
   cat <<EOF
-     From now on, merging to main also deploys, once the tests have passed. To
-     turn that off:  gh variable delete DEPLOY_ON_MERGE --repo $GITHUB_OWNER/$GITHUB_REPO
+     From now on, merging to main also deploys. To turn that off:  gh variable delete DEPLOY_ON_MERGE --repo $GITHUB_OWNER/$GITHUB_REPO
 EOF
 fi
 
