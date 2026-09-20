@@ -224,8 +224,6 @@ Then:
 2. Register your account on the app's own register page, once. The app keeps its own login behind Microsoft sign-in.
 3. To check that nobody else gets in, open the address in a private window and sign in with a different Microsoft account. It should be refused.
 
-If pages look unstyled or blank after you sign in, the app is not yet trusting Azure's proxy for HTTPS. That fix is planned as its own task.
-
 The sign-in needs a client secret. Container Apps offers no non-expiring alternative, so it expires after two years. The script shows the date and warns when it is within 60 days. To replace it, run the script again with `ROTATE_SECRET=1`, which issues a new secret and removes the old one.
 
 | Setting           | Effect                                                                          |
