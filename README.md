@@ -201,7 +201,40 @@ The full set is in `.env.example`. The ones the template relies on:
 
 Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
 
-Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until an identity provider is configured, which is planned in a later task.
+Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until sign-in is set up, which the next section covers.
+
+### Signing In To The App (Easy Auth)
+
+Until sign-in is set up, the app answers HTTP 403 to everyone, including you. `deploy/azure-easyauth-setup.sh` lets you in with your Microsoft account and keeps everyone else out. Run the provisioning script first, then:
+
+```bash
+./deploy/azure-easyauth-setup.sh
+```
+
+The script:
+
+- Creates a Microsoft Entra app registration called `<repo>-easyauth`, limited to your own directory, whose redirect address is the app's `/.auth/login/aad/callback`.
+- Requires user assignment on it and assigns only the account signed in to `az`. Anyone else is refused by Microsoft before the request reaches the app, so they cannot wake the app or its database.
+- Connects the app to Microsoft sign-in and switches unauthenticated visitors from the 403 to a redirect to sign in. It restricts access first and redirects last, so there is never a moment when any account in the directory could get in.
+- Checks that visitors really are redirected, and tells you if that is not yet confirmed. Settings can take a few minutes to apply. The check asks the way a browser does, because Easy Auth answers a client that does not look like a browser, such as plain `curl`, with a 401 instead of the redirect.
+
+Then:
+
+1. Open the app's address in a browser and sign in with the allowed Microsoft account.
+2. Register your account on the app's own register page, once. The app keeps its own login behind Microsoft sign-in.
+3. To check that nobody else gets in, open the address in a private window and sign in with a different Microsoft account. It should be refused.
+
+If pages look unstyled or blank after you sign in, the app is not yet trusting Azure's proxy for HTTPS. That fix is planned as its own task.
+
+The sign-in needs a client secret. Container Apps offers no non-expiring alternative, so it expires after two years. The script shows the date and warns when it is within 60 days. To replace it, run the script again with `ROTATE_SECRET=1`, which issues a new secret and removes the old one.
+
+| Setting           | Effect                                                                          |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `ALLOWED_USER_ID` | Object ID of the one user to let in. Defaults to the account signed in to `az`. |
+| `ROTATE_SECRET=1` | Issues a new client secret and removes the old one.                             |
+| `VERIFY=false`    | Skips the final check that visitors are redirected to sign in.                  |
+
+Running the script again is safe. It only changes what has drifted. If other users or groups have been assigned in Microsoft Entra, it reports them and leaves them alone.
 
 ### Deploy Sign-In (OIDC)
 

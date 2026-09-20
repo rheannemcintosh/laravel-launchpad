@@ -357,9 +357,9 @@ Every request currently gets HTTP 403 — the app is not readable by anyone.
 NEXT STEPS
   1. Set up the deploy workflow's Azure sign-in with ./deploy/azure-oidc-setup.sh,
      then run the deploy workflow so the app runs a commit-tagged image.
-  2. Add a Microsoft identity provider to the container app's authentication
-     (Easy Auth) and assign only your account. That step also switches the
-     unauthenticated action from 403 to the sign-in redirect.
+  2. Set up Microsoft sign-in for your account only with
+     ./deploy/azure-easyauth-setup.sh. That switches the app from 403 to the
+     sign-in redirect.
   3. Open the URL, sign in with Microsoft, register your Laravel account once.
 EOF
 fi
