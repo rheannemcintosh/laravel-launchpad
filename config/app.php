@@ -13,7 +13,19 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'My App'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Application Tagline
+    |--------------------------------------------------------------------------
+    |
+    | A short line about what the app does, shown on the home page and the
+    | dashboard. Set it with APP_TAGLINE so it can change without touching code.
+    |
+    */
+
+    'tagline' => env('APP_TAGLINE', 'A short line about what your app does.'),
 
     /*
     |--------------------------------------------------------------------------

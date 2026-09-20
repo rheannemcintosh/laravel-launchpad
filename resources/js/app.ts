@@ -5,7 +5,12 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+// The name comes from APP_NAME on the server, through a meta tag in the page shell,
+// so it is set in one place and can change without rebuilding the front end.
+const appName =
+    document.head
+        .querySelector('meta[name="application-name"]')
+        ?.getAttribute('content') ?? '';
 
 void createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
