@@ -10,6 +10,8 @@
 #   trust rule          a federated credential that trusts this GitHub repository
 #                       on one branch (main by default) and nothing else
 #   repository secrets  AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   repository variable DEPLOY_ON_MERGE=true, which turns on the deploy that runs
+#                       after the tests pass on a merge to main
 #
 # No client secret is created, so there is nothing to store or rotate. The three
 # secrets are identifiers, not passwords.
@@ -28,6 +30,10 @@
 #   GITHUB_REPO    default: repository name from `git remote origin`, as GitHub
 #                  spells it.
 #   TRUST_BRANCH   default: main. Only workflow runs on this branch are trusted.
+#   ENABLE_DEPLOY_ON_MERGE
+#                  default: true. Set to false to leave merges to main deploying
+#                  nothing, so releases stay manual. It is only turned on when
+#                  TRUST_BRANCH is main, because that is where merges land.
 #   OIDC_SUBJECT   default: read from GitHub. Set it to override the trust rule's
 #                  subject, for example with the one quoted in an Azure
 #                  AADSTS700213 sign-in error.
@@ -188,6 +194,26 @@ for pair in "AZURE_CLIENT_ID=$APP_ID" "AZURE_TENANT_ID=$TENANT_ID" "AZURE_SUBSCR
   fi
 done
 
+# Merges to main deploy only for a repository that has opted in with this
+# variable, so an app that has not been through this setup never tries to deploy.
+deploy_on_merge="off"
+deploy_on_merge_note=""
+echo "==> Deploy on merge"
+if ! is_set "${ENABLE_DEPLOY_ON_MERGE:-true}"; then
+  deploy_on_merge_note="left off (ENABLE_DEPLOY_ON_MERGE is off)"
+elif [[ "$TRUST_BRANCH" != "main" ]]; then
+  deploy_on_merge_note="left off: only $TRUST_BRANCH is trusted, and merges land on main"
+elif gh variable set DEPLOY_ON_MERGE --repo "$GITHUB_OWNER/$GITHUB_REPO" --body true >/dev/null 2>&1; then
+  deploy_on_merge="on"
+else
+  deploy_on_merge_note="could not be set (is gh logged in, with permission to write variables?)"
+fi
+if [[ "$deploy_on_merge" == "on" ]]; then
+  echo "    set DEPLOY_ON_MERGE=true"
+else
+  echo "    $deploy_on_merge_note"
+fi
+
 cat <<EOF
 
 ============================================================================
@@ -196,6 +222,7 @@ Done.
   Deploy identity : $DEPLOY_APP  ($APP_ID)
   Role            : Contributor on $RESOURCE_GROUP only
   Trusted         : $OIDC_SUBJECT
+  Deploy on merge : $deploy_on_merge
 EOF
 
 if [[ "$secrets_set" == false ]]; then
@@ -214,9 +241,19 @@ fi
 cat <<EOF
 
 NEXT STEPS
-  1. Run the deploy workflow from the main branch:
+  1. Deploy from the main branch, by hand:
        gh workflow run deploy.yml --repo $GITHUB_OWNER/$GITHUB_REPO --ref $TRUST_BRANCH
      It builds the image, signs in to Azure and updates the app to that commit.
+EOF
+
+if [[ "$deploy_on_merge" == "on" ]]; then
+  cat <<EOF
+     From now on, merging to main also deploys, once the tests have passed. To
+     turn that off:  gh variable delete DEPLOY_ON_MERGE --repo $GITHUB_OWNER/$GITHUB_REPO
+EOF
+fi
+
+cat <<EOF
   2. If the sign-in fails with AADSTS700213, Azure names the subject it received.
      Re-run this script with OIDC_SUBJECT set to exactly that value.
 ============================================================================

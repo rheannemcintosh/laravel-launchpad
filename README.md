@@ -254,7 +254,7 @@ The `deploy` workflow signs in to Azure with OIDC, so no password is stored anyw
     ./deploy/azure-oidc-setup.sh
     ```
 
-The script creates an app registration called `<repo>-deploy`, gives it the Contributor role on `rg-<repo>` only, adds a trust rule for the repository's `main` branch and sets the three repository secrets listed below. Re-running is safe. No client secret is created. Set `TRUST_BRANCH` to trust a different branch. If `gh` isn't available, the script prints the three values so you can add them by hand.
+The script creates an app registration called `<repo>-deploy`, gives it the Contributor role on `rg-<repo>` only, adds a trust rule for the repository's `main` branch and sets the three repository secrets listed below. It also sets the repository variable `DEPLOY_ON_MERGE` to `true`, which turns on deploying after a merge to `main` (see below). Re-running is safe. No client secret is created. Set `TRUST_BRANCH` to trust a different branch, which leaves deploy on merge off because merges land on `main`. Set `ENABLE_DEPLOY_ON_MERGE=false` to keep releases manual. If `gh` isn't available, the script prints the three values so you can add them by hand.
 
 If a deploy fails with the error `AADSTS700213`, Azure names the subject it received. Re-run the script with `OIDC_SUBJECT` set to exactly that value.
 
@@ -262,7 +262,7 @@ The scripts in `deploy/` share their naming rules in `deploy/lib.sh`, and the `d
 
 ### Deploy Workflow
 
-The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs only when started manually: open the repository's Actions tab, choose `deploy` and select Run workflow. Until the deploy sign-in above is set up, the build and push work and the Azure login step fails.
+The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs in two ways: when a change is merged to `main` (once the repository has opted in, see below), and when you start it by hand from the Actions tab by choosing `deploy` and selecting Run workflow. Until the deploy sign-in above is set up, the build and push work and the Azure login step fails.
 
 The workflow takes every name from the repository name, so nothing needs editing per app:
 
@@ -277,9 +277,22 @@ The workflow needs these repository secrets. The OIDC setup script sets them for
 | `AZURE_TENANT_ID`       | ID of the Microsoft Entra tenant.                           |
 | `AZURE_SUBSCRIPTION_ID` | ID of the Azure subscription that holds the app.            |
 
-To deploy automatically on merges, add a `push` trigger for `main` to the workflow once a manual deploy has succeeded.
-
 The `tests` workflow runs on pushes to `main` and on pull requests, against a SQL Server service container.
+
+#### Deploy On Merge
+
+On a push to `main`, the `tests` workflow runs its tests first and then calls the `deploy` workflow, so a change that fails the tests is never released. Two things must be true for the deploy to run:
+
+- The push is to `main`. Pull requests never deploy.
+- The repository variable `DEPLOY_ON_MERGE` is `true`. The OIDC setup script sets it. A new app made from the template has no such variable until its Azure setup is done, so its merges show the deploy job as skipped instead of failing.
+
+Deploys run one at a time. A newer merge waits for a deploy that is already updating the app instead of interrupting it, and if several merges queue up, only the newest waiting one runs.
+
+To turn it off, delete the variable and releases go back to manual:
+
+```bash
+gh variable delete DEPLOY_ON_MERGE
+```
 
 ### Tearing Down An App
 
@@ -294,7 +307,7 @@ It removes:
 - The budget alert, which sits on the resource group rather than inside it, so the script deletes it explicitly first.
 - The resource group `rg-<repo>` with everything in it: the container app, the database server and database, and the Container Apps environment.
 - The app registrations `<repo>-deploy` and, if it exists, `<repo>-easyauth` in Microsoft Entra.
-- The `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` repository secrets, but only for the app named after the repository, because the repository has one set of them and they belong to that app.
+- The `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` repository secrets, and the `DEPLOY_ON_MERGE` variable, but only for the app named after the repository, because the repository has one set of them and they belong to that app. The variable is deleted first, so no merge tries to deploy to an app that is being removed.
 
 The script lists everything it will delete and asks you to type the app name before it deletes anything. A resource group that contains nothing the provisioning script creates for the app is refused, so an unrelated group with the same name is never touched. Deleting a group with a database in it can take ten minutes or more, and the script waits for it to finish.
 
@@ -305,7 +318,7 @@ These settings change how it behaves:
 | `DRY_RUN=1`            | Lists what would be removed and deletes nothing.                                                           |
 | `FORCE=1`              | Skips the typed confirmation, for automation. The check on the resource group still applies.               |
 | `NO_WAIT=1`            | Returns without waiting for the resource group deletion to finish.                                         |
-| `REMOVE_SECRETS=false` | Leaves the repository secrets alone.                                                                       |
+| `REMOVE_SECRETS=false` | Leaves the repository secrets and variable alone.                                                          |
 | `APP_NAME=<name>`      | Removes a differently named app, such as a throwaway one. The repository secrets are left alone for these. |
 
 Running the script again is safe. It only removes what still exists.

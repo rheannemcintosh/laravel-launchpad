@@ -38,6 +38,14 @@ lowercase() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+# True for anything except empty, 0, false and no.
+is_set() {
+  case "$(lowercase "${1:-}")" in
+    "" | 0 | false | no) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 # Decides APP_NAME (default: the repository name, lowercased) and the names
 # derived from it. Exits with a message when the name cannot be used. Needs
 # load_remote to have run first.

@@ -1,15 +1,18 @@
 name: deploy
 
-# Manual only until the Azure resources exist and the AZURE_* secrets are set
-# (see the Deployment section of the README). After the first successful
-# provision and deploy, add a `push` trigger for `main` so merges deploy
-# automatically.
+# Runs when started by hand from the Actions tab, and when the tests workflow
+# calls it after the tests pass on a merge to main. That call only happens when
+# the repository has opted in with the DEPLOY_ON_MERGE variable, which the OIDC
+# setup script sets (see the Deployment section of the README).
 on:
   workflow_dispatch:
+  workflow_call:
 
+# One deploy at a time, and never cancel one that is already updating the app: a
+# newer run waits its turn instead. GitHub keeps only the newest waiting run.
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
