@@ -20,8 +20,9 @@
 #   - az CLI logged in:  az login
 #   - A container image already pushed to ghcr.io by the deploy workflow (run it
 #     once from the Actions tab first). The script installs the containerapp CLI
-#     extension and registers the Microsoft.Sql and Microsoft.App resource
-#     providers if they are not already registered.
+#     extension and registers the Microsoft.Sql, Microsoft.App and
+#     Microsoft.OperationalInsights resource providers if they are not already
+#     registered.
 #   - The ghcr.io package can be private — set GHCR_USERNAME/GHCR_PAT (a token with
 #     read:packages) and this script gives the container app pull credentials. Leave
 #     both unset only if the package is public.
@@ -138,7 +139,7 @@ az extension add --name containerapp --upgrade --yes --only-show-errors --output
 
 # Resource providers are off by default on a fresh subscription and creating a
 # resource fails until they are registered.
-for provider in Microsoft.Sql Microsoft.App; do
+for provider in Microsoft.Sql Microsoft.App Microsoft.OperationalInsights; do
   state="$(az provider show --namespace "$provider" --query registrationState -o tsv 2>/dev/null || true)"
   if [[ "$state" != "Registered" ]]; then
     echo "    registering $provider (this can take a few minutes)"
