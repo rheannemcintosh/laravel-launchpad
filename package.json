@@ -8,6 +8,7 @@
         "dev": "vp dev",
         "check": "vp check",
         "check:fix": "vp check --fix",
+        "brand": "node scripts/brand.mjs",
         "types:check": "vue-tsc --noEmit"
     },
     "dependencies": {
