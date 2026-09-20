@@ -67,14 +67,6 @@ WARN_DAYS=60
 DEFAULT_ACCESS_ROLE="00000000-0000-0000-0000-000000000000"
 BROWSER_AGENT="Mozilla/5.0"
 
-# True for anything except empty, 0, false and no.
-is_set() {
-  case "$(lowercase "${1:-}")" in
-    "" | 0 | false | no) return 1 ;;
-    *) return 0 ;;
-  esac
-}
-
 # ----------------------------------------------------------------------------
 echo "==> Azure CLI"
 if ! az account show --output none 2>/dev/null; then

@@ -16,6 +16,9 @@
 #                       but only for the app named after the repository, because
 #                       the repository has one set of them and they belong to
 #                       that app
+#   deploy on merge     the repository variable DEPLOY_ON_MERGE, under the same
+#                       rule. It is deleted first, so no merge tries to deploy to
+#                       an app that is being removed
 #
 # It lists exactly what it will delete and asks you to type the app name before
 # it deletes anything. A resource group that does not contain anything this
@@ -34,7 +37,8 @@
 #   FORCE            set to 1 to skip the typed confirmation, for automation.
 #   NO_WAIT          set to 1 to return without waiting for the resource group
 #                    deletion to finish.
-#   REMOVE_SECRETS   set to false to leave the repository secrets alone.
+#   REMOVE_SECRETS   set to false to leave the repository secrets, and the
+#                    DEPLOY_ON_MERGE variable, alone.
 #
 # Running it again is safe: it only removes what still exists, and does nothing
 # when everything is already gone.
@@ -55,14 +59,6 @@ resolve_app_name
 
 GITHUB_OWNER="${GITHUB_OWNER:-$REMOTE_OWNER}"
 GITHUB_REPO="${GITHUB_REPO:-$REMOTE_REPO}"
-
-# True for anything except empty, 0, false and no.
-is_set() {
-  case "$(lowercase "${1:-}")" in
-    "" | 0 | false | no) return 1 ;;
-    *) return 0 ;;
-  esac
-}
 
 TAB="$(printf '\t')"
 
@@ -126,6 +122,7 @@ done
 # Repository secrets. There is one set per repository, so they are only removed
 # for the app the deploy workflow targets: the one named after the repository.
 secret_names=""
+variable_names=""
 secrets_note=""
 secrets_by_hand=false
 if ! is_set "${REMOVE_SECRETS:-true}"; then
@@ -136,6 +133,12 @@ elif [[ "$APP_NAME" != "$(lowercase "$GITHUB_REPO")" ]]; then
   secrets_note="left alone: they belong to the app named after the repository ($(lowercase "$GITHUB_REPO")), not $APP_NAME"
 elif listed="$(gh secret list --repo "$GITHUB_OWNER/$GITHUB_REPO" --json name --jq '.[].name' 2>/dev/null)"; then
   secret_names="$(printf '%s\n' "$listed" | grep -E '^(AZURE_CLIENT_ID|AZURE_TENANT_ID|AZURE_SUBSCRIPTION_ID)$' || true)"
+  # The variable that turns on deploy on merge belongs to the same app.
+  if variables="$(gh variable list --repo "$GITHUB_OWNER/$GITHUB_REPO" --json name --jq '.[].name' 2>/dev/null)"; then
+    variable_names="$(grep -x 'DEPLOY_ON_MERGE' <<< "$variables" || true)"
+  else
+    secrets_by_hand=true
+  fi
 else
   secrets_by_hand=true
   secrets_note="could not be read (is gh installed and logged in?)"
@@ -211,14 +214,21 @@ elif [[ -n "$secrets_note" ]]; then
 else
   echo "  Repository secrets: none found"
 fi
+
+if [[ -n "$variable_names" ]]; then
+  nothing_to_remove=false
+  echo
+  echo "  Variable on the GitHub repository $GITHUB_OWNER/$GITHUB_REPO (turns off deploy on merge):"
+  echo "    - DEPLOY_ON_MERGE"
+fi
 echo "============================================================================"
 
 if [[ "$nothing_to_remove" == true ]]; then
   echo
   echo "Nothing to remove."
   if [[ "$secrets_by_hand" == true ]]; then
-    echo "Check the repository secrets by hand: AZURE_CLIENT_ID, AZURE_TENANT_ID and"
-    echo "AZURE_SUBSCRIPTION_ID may still be set."
+    echo "Check the repository secrets and variable by hand: AZURE_CLIENT_ID,"
+    echo "AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID and DEPLOY_ON_MERGE may still be set."
   fi
   exit 0
 fi
@@ -246,6 +256,17 @@ fi
 # ----------------------------------------------------------------------------
 # Delete
 # ----------------------------------------------------------------------------
+secrets_failed=false
+if [[ -n "$variable_names" ]]; then
+  echo "==> Turning off deploy on merge first, so no merge deploys to what is being removed"
+  if gh variable delete DEPLOY_ON_MERGE --repo "$GITHUB_OWNER/$GITHUB_REPO" >/dev/null 2>&1; then
+    echo "    deleted DEPLOY_ON_MERGE"
+  else
+    secrets_failed=true
+    echo "    could not delete DEPLOY_ON_MERGE"
+  fi
+fi
+
 if [[ "$budget_exists" == true ]]; then
   echo "==> Deleting the budget alert $BUDGET_NAME"
   if az rest --method delete --url "$budget_url" --output none; then
@@ -279,7 +300,6 @@ if [[ -n "$app_lines" ]]; then
   done <<< "$app_lines"
 fi
 
-secrets_failed=false
 if [[ -n "$secret_names" ]]; then
   echo "==> Deleting repository secrets on $GITHUB_OWNER/$GITHUB_REPO"
   while read -r name; do
@@ -298,7 +318,8 @@ echo "==========================================================================
 echo "Done."
 if [[ "$secrets_by_hand" == true || "$secrets_failed" == true ]]; then
   echo
-  echo "Remove these repository secrets by hand under Settings, Secrets and variables,"
-  echo "Actions: AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID."
+  echo "Remove these by hand under Settings, Secrets and variables, Actions: the secrets"
+  echo "AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID, and the variable"
+  echo "DEPLOY_ON_MERGE (deleting the variable turns off deploy on merge)."
 fi
 echo "============================================================================"
