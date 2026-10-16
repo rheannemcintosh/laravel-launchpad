@@ -81,6 +81,7 @@ The starter kit's default routes:
 - **[Inertia.js](https://inertiajs.com/docs)** — Connects Laravel controllers to Vue pages without a separate API.
 - **[Laravel Fortify](https://laravel.com/docs/13.x/fortify)** — Authentication backend: sign-in, registration and password reset.
 - **[Tailwind CSS](https://tailwindcss.com/docs)** — Styling.
+- **[Instrument Sans](https://fonts.google.com/specimen/Instrument+Sans)** — The app's font, from the `@fontsource/instrument-sans` package and served by the app itself. Licensed under the SIL Open Font License 1.1.
 - **[Vite](https://vite.dev/guide/)** — Frontend build tooling.
 - **[Pest](https://pestphp.com/docs)** — Test framework.
 - **[Pint](https://laravel.com/docs/13.x/pint)** — PHP code style.
@@ -251,6 +252,8 @@ Each option is optional, but at least one is needed. It can be run again wheneve
 Nothing is written unless every value is valid. An unknown icon name, or a name or tagline containing a double quote, backslash or dollar sign (which would break the `.env` file), stops it with a message and changes nothing. The name and tagline can also be set by hand in `.env`.
 
 `public/favicon.ico` and `public/apple-touch-icon.png` are pictures, which need an image converter. They are rebuilt when `rsvg-convert` is installed (`brew install librsvg`, or `apt install librsvg2-bin`) and left as they were otherwise, with a note. They are only used by old browsers and the iOS home screen. `.env.example` holds placeholders (`My App` and a generic tagline) until you run the command.
+
+The font is Instrument Sans, installed from the `@fontsource/instrument-sans` package and built into the app, so the build downloads no font and the pages ask no other website for one. To use a different font, install its Fontsource package, for example `npm install -D @fontsource/inter`, then change the family and the `fontsource(...)` call in `vite.config.ts` and the `--font-sans` value in `resources/css/app.css` to match.
 
 ### Updating Vite+
 
