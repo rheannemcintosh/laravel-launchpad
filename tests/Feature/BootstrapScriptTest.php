@@ -72,7 +72,10 @@ beforeEach(function () {
         if [ "\$1" = push ]; then echo "git \$*" >> "\$FAKE_LOG"; exit 0; fi
         exec {$git} "\$@"
         SH);
-    bootstrapWrite("{$this->bin}/node", "#!/bin/bash\nexit 0\n");
+    bootstrapWrite("{$this->bin}/node", <<<'SH'
+        #!/bin/bash
+        if [ "$1" = "--version" ]; then echo "v${FAKE_NODE:-22.16.0}"; fi
+        SH);
     bootstrapWrite("{$this->bin}/npm", <<<'SH'
         #!/bin/bash
         echo "npm $*" >> "$FAKE_LOG"
@@ -90,6 +93,7 @@ beforeEach(function () {
         SH);
     bootstrapWrite("{$this->bin}/az", <<<'SH'
         #!/bin/bash
+        if [ "$1" = "version" ]; then echo "${FAKE_AZ_VERSION:-2.84.0}"; exit 0; fi
         echo "az $*" >> "$FAKE_LOG"
         if [ "$1 $2" = "account show" ]; then [ "${FAKE_AZ:-ok}" = ok ]; exit $?; fi
         if [ "$1 $2" = "containerapp show" ]; then
@@ -101,6 +105,7 @@ beforeEach(function () {
         SH);
     bootstrapWrite("{$this->bin}/gh", <<<'SH'
         #!/bin/bash
+        if [ "$1" = "--version" ]; then echo "gh version ${FAKE_GH_VERSION:-2.91.0} (2026-04-22)"; exit 0; fi
         echo "gh $*" >> "$FAKE_LOG"
         state="$FAKE_STATE"
         case "$1 $2" in
@@ -394,6 +399,44 @@ test('it stops before changing anything when a check fails', function (array $en
     'an origin that is not GitHub' => [[], "'origin' is a GitHub repository", fn ($test) => Process::path($test->work)->run('git remote set-url origin https://example.com/acme/acme-tracker.git')->throw()],
     'a repository name Azure cannot use' => [[], 'is not valid', fn ($test) => Process::path($test->work)->run('git remote set-url origin git@github.com:acme/Acme_Tracker.git')->throw()],
 ]);
+
+test('a tool that is too old stops the run before anything is changed', function (array $env, string $expected) use ($full, $password) {
+    $result = bootstrapRun($this, $full, [...$password, ...$env]);
+
+    expect($result->failed())->toBeTrue()
+        ->and($result->errorOutput())->toContain($expected)
+        ->and($result->errorOutput())->toContain('and run this again')
+        ->and(bootstrapCalled($this, 'npm run brand'))->toBe([])
+        ->and(bootstrapCalled($this, 'git push'))->toBe([])
+        ->and(bootstrapCalled($this, 'gh workflow'))->toBe([])
+        ->and(bootstrapCalled($this, 'provision'))->toBe([]);
+})->with([
+    'node just below the minimum' => [['FAKE_NODE' => '18.2.9'], 'node 18.2.9 is too old: node 18.3.0 or newer is needed (util.parseArgs, used by npm run brand)'],
+    'an old node' => [['FAKE_NODE' => '16.20.2'], 'node 16.20.2 is too old: node 18.3.0 or newer'],
+    'gh just below the minimum' => [['FAKE_GH_VERSION' => '2.24.9'], 'gh 2.24.9 is too old: gh 2.25.0 or newer is needed (gh variable'],
+    'az just below the minimum' => [['FAKE_AZ_VERSION' => '2.78.9'], 'az 2.78.9 is too old: az 2.79.0 or newer is needed (what the containerapp extension needs)'],
+]);
+
+test('tools at the minimum, or newer with longer version parts, are accepted', function (array $env) use ($full, $password) {
+    $result = bootstrapRun($this, $full, [...$password, ...$env]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput())
+        ->and($result->errorOutput())->not->toContain('too old')
+        ->and(bootstrapCalled($this, 'provision'))->toHaveCount(1);
+})->with([
+    'exactly the minimums' => [['FAKE_NODE' => '18.3.0', 'FAKE_GH_VERSION' => '2.25.0', 'FAKE_AZ_VERSION' => '2.79.0']],
+    'two digit parts' => [['FAKE_NODE' => '18.10.0', 'FAKE_GH_VERSION' => '2.100.0', 'FAKE_AZ_VERSION' => '2.100.1']],
+    'a newer major' => [['FAKE_NODE' => '24.11.0', 'FAKE_GH_VERSION' => '3.0.0', 'FAKE_AZ_VERSION' => '3.0.0']],
+]);
+
+test('a version that cannot be read is reported but does not stop the run', function () use ($full, $password) {
+    $result = bootstrapRun($this, $full, [...$password, 'FAKE_NODE' => 'unreadable']);
+
+    expect($result->successful())->toBeTrue($result->errorOutput())
+        ->and($result->output())->toContain('Could not read the version of node')
+        ->and($result->output())->toContain('It needs 18.3.0 or newer')
+        ->and(bootstrapCalled($this, 'provision'))->toHaveCount(1);
+});
 
 test('a missing tool is reported by name', function () use ($full, $password) {
     // A PATH with git and bash but without the stand-in programs and without node.

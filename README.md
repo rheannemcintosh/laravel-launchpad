@@ -6,6 +6,22 @@ The template provides the base application: a Laravel 13 app with the Vue starte
 
 ## Using This Template
 
+### What You Need Installed
+
+Day-to-day development runs in Docker, but the setup command below runs on your own machine, so it needs these tools there. It checks the versions before it changes anything and stops with a message if one is too old:
+
+| Tool                                                                            | Version                                                                                                                                                                                         | Why                                                                                               |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Git](https://git-scm.com/downloads)                                            | Any recent version.                                                                                                                                                                             | Commits and pushes the branding.                                                                  |
+| [Node.js and npm](https://nodejs.org/)                                          | Node 18.3 or newer. Node 22.18 or newer is better, because that is what the project's build tooling (`vite-plus`) asks for, and older versions print warnings when installing the dependencies. | Runs `npm run brand`, and installs the dependencies if there are none.                            |
+| [GitHub CLI](https://cli.github.com/), signed in                                | 2.25 or newer, the version that added `gh variable`. Sign in with `gh auth login`.                                                                                                              | Starts the first deploy, sets the repository secrets and variable, and protects `main`.           |
+| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), signed in | 2.79 or newer, which is what the `containerapp` extension it installs asks for. An older one gets an older extension that this has not been tried with. Sign in with `az login`.                | Creates everything in Azure.                                                                      |
+| [librsvg](https://wiki.gnome.org/Projects/LibRsvg), optional                    | Any version. `brew install librsvg`, or `apt install librsvg2-bin`.                                                                                                                             | Builds `favicon.ico` and the iOS icon for a new icon. Without it they keep the template's rocket. |
+
+The scripts run on the older bash that ships with macOS as well as on Linux. Docker is only needed for local development, not for the setup command.
+
+### Setting Up A New App
+
 1. On this repository's page, select Use this template, then Create a new repository. Name the repository with 2 to 32 lowercase letters, numbers and single hyphens, starting with a letter, because its name becomes the name of everything in Azure. The new repository starts with a single commit and none of this repository's history. Read the notes at the end before making it private.
 
 2. Clone it, and sign in to GitHub and Azure:
@@ -98,6 +114,8 @@ The app runs in Docker through Laravel Sail. Sail starts the app with PHP 8.4, N
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+Starting a new app from the template needs more tools on your machine. See [What You Need Installed](#what-you-need-installed).
 
 ### Setup
 
