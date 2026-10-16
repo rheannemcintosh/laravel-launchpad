@@ -16,6 +16,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 5
+    # TypeScript 7 no longer has the JavaScript API that Vue's compiler uses to read
+    # files, so the front end build fails with it. Remove this once Vue supports it.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       npm:
         patterns:
