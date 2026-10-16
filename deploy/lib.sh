@@ -34,6 +34,16 @@ load_remote() {
   fi
 }
 
+# Reads KEY from the app's .env.example, where `npm run brand` writes the name and
+# tagline, without the quotes around the value. Prints nothing when there is none.
+env_example_value() {
+  local root
+  root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$root" && -f "$root/.env.example" ]]; then
+    sed -n "s/^$1=//p" "$root/.env.example" | head -1 | sed 's/^"\(.*\)"$/\1/'
+  fi
+}
+
 lowercase() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
@@ -44,6 +54,26 @@ is_set() {
     "" | 0 | false | no) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+# Decides what the deployed app shows, from the settings or else .env.example, where
+# `npm run brand` writes them, so the live app matches the one you set. Needs
+# resolve_app_name to have run first.
+#
+#   APP_TITLE    the name shown by the app. Default: the APP_NAME in .env.example.
+#                Without one, or with the template's placeholder "My App", the
+#                repository name in title case, e.g. laravel-launchpad ->
+#                Laravel Launchpad.
+#   APP_TAGLINE  the line shown on the home page and dashboard. Default: the
+#                APP_TAGLINE in .env.example, or empty.
+resolve_app_display() {
+  if [[ -z "${APP_TITLE:-}" ]]; then
+    APP_TITLE="$(env_example_value APP_NAME)"
+    if [[ -z "$APP_TITLE" || "$APP_TITLE" == "My App" ]]; then
+      APP_TITLE="$(printf '%s' "$APP_NAME" | tr '-' ' ' | awk '{for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2)} 1')"
+    fi
+  fi
+  APP_TAGLINE="${APP_TAGLINE:-$(env_example_value APP_TAGLINE)}"
 }
 
 # Decides APP_NAME (default: the repository name, lowercased) and the names
