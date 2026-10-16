@@ -4,6 +4,51 @@ A GitHub template for new Laravel apps: Vue (Inertia), Pest, Pint and Larastan, 
 
 The template provides the base application: a Laravel 13 app with the Vue starter kit, Pest for testing, Pint and Larastan for code quality, and Dependabot for dependency updates. A Docker development environment with a SQL Server database is available through Laravel Sail. A production image, a GitHub Actions workflow that tests every change and deploys merges to Azure Container Apps, and scripts that provision, sign in to, and tear down the Azure resources are included. A neutral home page and dashboard carry no branding, and one command gives a new app its own name, tagline and icon.
 
+## Using This Template
+
+To start a new app, follow these steps in order. Each one links to the section that explains it. Name the repository with 2 to 32 lowercase letters, numbers and single hyphens, starting with a letter, because its name becomes the name of everything in Azure.
+
+1. On this repository's page, select Use this template, then Create a new repository. The new repository starts with a single commit and none of this repository's history. Make it private if the app is not public, but read the notes at the end first.
+
+2. Clone it and install the dependencies, as in [Local Development](#local-development). Then give the app its own name, tagline and icon, and commit and push the result, so the first image carries them:
+
+    ```bash
+    npm run brand -- --name "Acme Tracker" --tagline "Track everything." --icon brain
+    ```
+
+    Run it where you installed the dependencies, with `./vendor/bin/sail` in front if that is inside the container. See [Branding](#branding) for the options. The command does not rename the `name` in `composer.json`, nor this README, so edit those by hand if you want them to match.
+
+3. Run the `deploy` workflow once from the Actions tab so the image exists in `ghcr.io`. Its Azure steps fail at this point, which is expected. A package from a private repository is private, so keep a token with `read:packages` ready for the next step.
+
+4. Log in to Azure and provision the app, as in [Provisioning Azure](#provisioning-azure). Set `GHCR_USERNAME` and `GHCR_PAT` if the package is private:
+
+    ```bash
+    SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/azure-provision.sh
+    ```
+
+5. Set up Microsoft sign-in for the app, as in [Signing In To The App (Easy Auth)](#signing-in-to-the-app-easy-auth). Until you do, the app answers HTTP 403 to everyone:
+
+    ```bash
+    ./deploy/azure-easyauth-setup.sh
+    ```
+
+6. Set up the deploy sign-in, as in [Deploy Sign-In (OIDC)](#deploy-sign-in-oidc). This also turns on [deploying after every merge](#deploy-on-merge):
+
+    ```bash
+    ./deploy/azure-oidc-setup.sh
+    ```
+
+7. Protect `main`. In Settings, Branches, require the `ci` status check before merging, because a merge deploys without waiting for the tests.
+
+### What A New Repository Does Not Inherit
+
+A repository made from a template gets the files, and nothing else from this repository's settings:
+
+- **Secrets and variables:** there are none. The OIDC script in step 6 sets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `DEPLOY_ON_MERGE`. Until then a merge shows the `deploy` job as skipped, which is the intended behaviour.
+- **Branch protection:** it is not copied, so step 7 is yours to do. GitHub only offers it for private repositories on a paid plan (GitHub Pro or above). On a free account a private repository cannot require the `ci` check, so either keep the repository public, upgrade, or keep releases manual by running the OIDC script in step 6 with `ENABLE_DEPLOY_ON_MERGE=false` and starting the `deploy` workflow by hand.
+- **Dependabot:** the update configuration is copied, and GitHub runs its first check straight away, so pull requests start arriving on day one. Dependabot security alerts are off until you turn them on in the repository's security settings.
+- **Actions:** workflows run from the first push. The `tests` workflow should pass without changes.
+
 ## Architecture
 
 The application is a Laravel monolith that renders its Vue 3 pages server-side through Inertia.js, so routing and controllers stay in Laravel while pages are Vue components built with Vite. Authentication is handled by Laravel Fortify with session-based sign-in. Data is stored in SQL Server, which runs in a container in the Sail environment and as a service in the test workflow. Azure SQL is the intended production database.
