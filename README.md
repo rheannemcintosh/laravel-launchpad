@@ -6,46 +6,53 @@ The template provides the base application: a Laravel 13 app with the Vue starte
 
 ## Using This Template
 
-To start a new app, follow these steps in order. Each one links to the section that explains it. Name the repository with 2 to 32 lowercase letters, numbers and single hyphens, starting with a letter, because its name becomes the name of everything in Azure.
+1. On this repository's page, select Use this template, then Create a new repository. Name the repository with 2 to 32 lowercase letters, numbers and single hyphens, starting with a letter, because its name becomes the name of everything in Azure. The new repository starts with a single commit and none of this repository's history. Read the notes at the end before making it private.
 
-1. On this repository's page, select Use this template, then Create a new repository. The new repository starts with a single commit and none of this repository's history. Make it private if the app is not public, but read the notes at the end first.
-
-2. Clone it and install the dependencies, as in [Local Development](#local-development). Then give the app its own name, tagline and icon, and commit and push the result, so the first image carries them:
+2. Clone it, and sign in to GitHub and Azure:
 
     ```bash
-    npm run brand -- --name "Acme Tracker" --tagline "Track everything." --icon brain
+    gh auth login
     ```
-
-    Run it where you installed the dependencies, with `./vendor/bin/sail` in front if that is inside the container. See [Branding](#branding) for the options. The command does not rename the `name` in `composer.json`, nor this README, so edit those by hand if you want them to match.
-
-3. Run the `deploy` workflow once from the Actions tab so the image exists in `ghcr.io`. Its Azure steps fail at this point, which is expected. A package from a private repository is private, so keep a token with `read:packages` ready for the next step.
-
-4. Log in to Azure and provision the app, as in [Provisioning Azure](#provisioning-azure). Set `GHCR_USERNAME` and `GHCR_PAT` if the package is private:
 
     ```bash
-    SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/azure-provision.sh
+    az login
     ```
 
-5. Set up Microsoft sign-in for the app, as in [Signing In To The App (Easy Auth)](#signing-in-to-the-app-easy-auth). Until you do, the app answers HTTP 403 to everyone:
+3. Run the bootstrap command from the `main` branch, with nothing uncommitted. It asks for the name, tagline and icon, a strong SQL admin password, and a token with `read:packages` if the image is private (leave that empty for a public image), then asks to go ahead:
 
     ```bash
-    ./deploy/azure-easyauth-setup.sh
+    ./deploy/bootstrap.sh
     ```
 
-6. Set up the deploy sign-in, as in [Deploy Sign-In (OIDC)](#deploy-sign-in-oidc). This also turns on [deploying after every merge](#deploy-on-merge):
+    To skip the questions, give the values as options and settings, for example:
 
     ```bash
-    ./deploy/azure-oidc-setup.sh
+    SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/bootstrap.sh --name "Acme Tracker" --tagline "Track everything." --icon brain --yes
     ```
 
-7. Protect `main`. In Settings, Branches, require the `ci` status check before merging, because a merge deploys without waiting for the tests.
+4. Open the address it prints, sign in with your Microsoft account, and register your account on the app's own register page, once.
+
+The name defaults to the repository name in title case, and the icon is a [Lucide](https://lucide.dev/icons) name such as `brain` or `heart-pulse`. Running the command again is safe, whether a step failed or you want to change a value: finished steps are skipped or repeated safely, and the first image is not built again once the app exists. Run `./deploy/bootstrap.sh --help` for the options.
+
+### What The Command Does
+
+It runs these steps in order, using the scripts described in the sections below, which still work on their own. Use them directly if you want to do any step by hand:
+
+1. Sets the name, tagline and icon with `npm run brand`, then commits and pushes the result. It installs the dependencies first if there are none. See [Branding](#branding).
+2. Runs the `deploy` workflow once so the image exists in `ghcr.io`, and waits for it to be pushed. The workflow's Azure steps fail at this point, which is expected. See [Deploy Workflow](#deploy-workflow).
+3. Provisions Azure with `deploy/azure-provision.sh`. The deployed app shows the name and tagline you set. See [Provisioning Azure](#provisioning-azure).
+4. Sets up Microsoft sign-in with `deploy/azure-easyauth-setup.sh`. Until then the app answers HTTP 403 to everyone. See [Signing In To The App (Easy Auth)](#signing-in-to-the-app-easy-auth).
+5. Requires the `ci` status check on `main`, because a merge deploys without waiting for the tests. If `main` already has protection it is left as it is. Where GitHub does not allow it, see the notes below.
+6. Sets up the deploy sign-in with `deploy/azure-oidc-setup.sh`, which also turns on [deploying after every merge](#deploy-on-merge). That is left off when `main` could not be protected, so a red pull request cannot be merged and deployed.
+
+`npm run brand` does not rename the `name` in `composer.json`, nor this README, so edit those by hand if you want them to match.
 
 ### What A New Repository Does Not Inherit
 
 A repository made from a template gets the files, and nothing else from this repository's settings:
 
-- **Secrets and variables:** there are none. The OIDC script in step 6 sets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `DEPLOY_ON_MERGE`. Until then a merge shows the `deploy` job as skipped, which is the intended behaviour.
-- **Branch protection:** it is not copied, so step 7 is yours to do. GitHub only offers it for private repositories on a paid plan (GitHub Pro or above). On a free account a private repository cannot require the `ci` check, so either keep the repository public, upgrade, or keep releases manual by running the OIDC script in step 6 with `ENABLE_DEPLOY_ON_MERGE=false` and starting the `deploy` workflow by hand.
+- **Secrets and variables:** there are none. The bootstrap command sets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `DEPLOY_ON_MERGE` (through the OIDC script). Until then a merge shows the `deploy` job as skipped, which is the intended behaviour.
+- **Branch protection:** it is not copied, so the bootstrap command sets it. GitHub only offers it for private repositories on a paid plan (GitHub Pro or above). On a free account a private repository cannot require the `ci` check, so the command leaves deploying after a merge off and tells you. Either keep the repository public, upgrade and turn it on with `gh variable set DEPLOY_ON_MERGE --body true`, or keep releases manual and start the `deploy` workflow by hand.
 - **Dependabot:** the update configuration is copied, and GitHub runs its first check straight away, so pull requests start arriving on day one. Dependabot security alerts are off until you turn them on in the repository's security settings.
 - **Actions:** workflows run from the first push. The `tests` workflow should pass without changes.
 
@@ -285,7 +292,7 @@ If the build stops with "Expected @voidzero-dev/vite-plus-core@X, but found @voi
     SQL_ADMIN_PASSWORD='choose-a-strong-password' ./deploy/azure-provision.sh
     ```
 
-Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The deployed app's name is `APP_TITLE` (the repository name in title case by default) and its tagline is the `APP_TAGLINE` in `.env.example`, so run `npm run brand` first if you want the live app to carry your tagline. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
+Also set `GHCR_USERNAME` and `GHCR_PAT` (a token with `read:packages`) if the `ghcr.io` package is private. The script header lists every setting, such as `APP_NAME`, `LOCATION`, `BUDGET_AMOUNT` and `BUDGET_EMAIL`. The deployed app shows the `APP_NAME` and `APP_TAGLINE` in `.env.example`, which `npm run brand` writes, so run it first if you want the live app to carry your name and tagline. Without a name there (or with the template's placeholder, `My App`) it uses the repository name in title case. Set `APP_TITLE` or `APP_TAGLINE` to override either. The budget alert emails the signed-in Azure user at 80% and 100% of the budget, or `BUDGET_EMAIL` if you set it.
 
 Re-running the script is safe: it reuses existing resources and keeps the data and secrets. The container app is created behind Easy Auth and returns HTTP 403 to everyone until sign-in is set up, which the next section covers.
 
