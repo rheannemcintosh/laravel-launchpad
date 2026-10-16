@@ -3,7 +3,7 @@ import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
+import { fontsource } from 'laravel-vite-plugin/fonts';
 import { defineConfig, lazyPlugins } from 'vite-plus';
 
 const vitePort = Number(process.env.VITE_PORT ?? 5173);
@@ -13,8 +13,11 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.ts'],
             refresh: true,
+            // The font files come from the installed @fontsource/instrument-sans package
+            // and are served by the app itself, so the build downloads nothing and the
+            // pages ask no other website for a font.
             fonts: [
-                bunny('Instrument Sans', {
+                fontsource('Instrument Sans', {
                     weights: [400, 500, 600],
                 }),
             ],
