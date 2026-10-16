@@ -11,9 +11,7 @@ permissions:
 
 jobs:
   ci:
-    # Pinned so the machine only changes when this line does, instead of when GitHub
-    # moves ubuntu-latest to a new Ubuntu release. The driver step below follows it.
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
 
     env:
       DB_CONNECTION: sqlsrv
