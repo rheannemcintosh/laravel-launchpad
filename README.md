@@ -200,6 +200,26 @@ Nothing is written unless every value is valid. An unknown icon name, or a name 
 
 `public/favicon.ico` and `public/apple-touch-icon.png` are pictures, which need an image converter. They are rebuilt when `rsvg-convert` is installed (`brew install librsvg`, or `apt install librsvg2-bin`) and left as they were otherwise, with a note. They are only used by old browsers and the iOS home screen. `.env.example` holds placeholders (`My App` and a generic tagline) until you run the command.
 
+### Updating Vite+
+
+`vite-plus` builds, lints and formats the app. It carries its own copy of Vite, `vite-plus-core`, and needs exactly the same version of it, so `package.json` points `vite` at that copy: once under `devDependencies` and once under `overrides`. The versions in those three lines must always match. Dependabot can change only one of them, which fails the build, so it is told to skip `vite-plus` and `vite`, and you update them by hand when you want a new version:
+
+1. In `package.json`, set `vite-plus` and both `npm:@voidzero-dev/vite-plus-core@` aliases to the new version.
+
+2. Install. The flag is needed because `vite-plus` lists optional test packages that npm otherwise reports as a conflict:
+
+    ```bash
+    npm install --legacy-peer-deps
+    ```
+
+3. Check that the build and the checks still pass:
+
+    ```bash
+    npm run build && npm run check && npm run types:check
+    ```
+
+If the build stops with "Expected @voidzero-dev/vite-plus-core@X, but found @voidzero-dev/vite-plus-core@Y", one of the three lines is out of step. TypeScript is held at version 6, and Dependabot skips major TypeScript updates, because version 7 fails the front end build.
+
 ## Deployment
 
 ### Provisioning Azure
