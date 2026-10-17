@@ -39,7 +39,9 @@ beforeEach(function () {
     File::copy(base_path('deploy/lib.sh'), "{$this->work}/deploy/lib.sh");
     chmod("{$this->work}/deploy/bootstrap.sh", 0755);
     File::ensureDirectoryExists("{$this->work}/resources/js/components");
-    File::copy(base_path('resources/js/components/AppLogoIcon.vue'), "{$this->work}/resources/js/components/AppLogoIcon.vue");
+    // The app's icon component, written here instead of copied, so these tests do not depend
+    // on which icon an app made from the template has chosen.
+    File::put("{$this->work}/resources/js/components/AppLogoIcon.vue", "<script setup lang=\"ts\">\nimport { Rocket } from '@lucide/vue';\n</script>\n\n<template>\n    <Rocket :class=\"className\" v-bind=\"\$attrs\" />\n</template>\n");
     File::put("{$this->work}/.env.example", "APP_NAME=\"My App\"\nAPP_TAGLINE=\"A short line about what your app does.\"\nAPP_ENV=local\n");
 
     // The scripts bootstrap runs are replaced by ones that record how they were run.
