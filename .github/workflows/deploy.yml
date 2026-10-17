@@ -3,7 +3,13 @@ name: deploy
 # Starts by itself when a change is merged to main, and can be started by hand
 # from the Actions tab. A merge only deploys when the repository has opted in with
 # the DEPLOY_ON_MERGE variable, which the OIDC setup script sets (see the
-# Deployment section of the README). A manual run always deploys.
+# Deployment section of the README). A manual run always runs.
+#
+# A run builds and pushes the image, then updates the app. Updating the app needs the
+# Azure sign-in that the OIDC setup script sets up, which comes after the first image
+# exists (provisioning needs the image). So a manual run before that builds and pushes
+# the image and finishes green with a notice instead of failing. A merge deploy with the
+# sign-in missing is a real mistake, so that still fails.
 #
 # This does not wait for the tests workflow, which starts at the same moment. The
 # safeguard is that the pull request's tests have already passed before it is
@@ -49,6 +55,36 @@ jobs:
             echo "RESOURCE_GROUP=rg-${app}"
           } >> "$GITHUB_ENV"
 
+      # Whether the Azure sign-in is set up, from its three repository secrets. A secret
+      # that is not set reads as empty here. Done before the build so a mistake on a
+      # merge fails straight away, and because a step condition cannot read secrets.
+      - name: Check the Azure sign-in is set up
+        id: azure
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          missing=""
+          [ -n "$AZURE_CLIENT_ID" ] || missing="$missing AZURE_CLIENT_ID"
+          [ -n "$AZURE_TENANT_ID" ] || missing="$missing AZURE_TENANT_ID"
+          [ -n "$AZURE_SUBSCRIPTION_ID" ] || missing="$missing AZURE_SUBSCRIPTION_ID"
+          missing="${missing# }"
+
+          if [ -z "$missing" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            message="The image is built and pushed, but the app was not updated, because the Azure sign-in is not set up yet (missing secrets: ${missing// /, }). ./deploy/azure-oidc-setup.sh sets it up. Until then this is expected."
+            echo "::notice title=Azure sign-in not set up yet::$message"
+            echo "### Azure sign-in not set up yet" >> "$GITHUB_STEP_SUMMARY"
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Azure sign-in is not set up::DEPLOY_ON_MERGE is on, so this merge should update the app, but these repository secrets are not set: ${missing// /, }. Run ./deploy/azure-oidc-setup.sh, or delete the DEPLOY_ON_MERGE variable to stop deploying on merge."
+            exit 1
+          fi
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -73,6 +109,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Azure login (OIDC)
+        if: steps.azure.outputs.ready == 'true'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -82,6 +119,7 @@ jobs:
       # Deploy the commit-tagged image so every release is traceable and can be
       # rolled back.
       - name: Deploy to Container Apps
+        if: steps.azure.outputs.ready == 'true'
         uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
         with:
           azcliversion: latest

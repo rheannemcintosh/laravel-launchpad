@@ -8,7 +8,8 @@
 #   1. Branding         npm run brand, which also gives the app its own Composer
 #                       package name and README title, then commits and pushes it
 #   2. First image      starts the deploy workflow and waits for it to push the
-#                       image (its Azure steps fail at this point, by design)
+#                       image (it finishes green, skipping its Azure steps with a notice
+#                       until the deploy sign-in exists)
 #   3. Provisioning     deploy/azure-provision.sh
 #   4. Sign-in          deploy/azure-easyauth-setup.sh
 #   5. Protect main     requires the `ci` check, where GitHub allows it

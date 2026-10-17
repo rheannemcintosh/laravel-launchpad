@@ -55,7 +55,7 @@ The name defaults to the repository name in title case, and the icon is a [Lucid
 It runs these steps in order, using the scripts described in the sections below, which still work on their own. Use them directly if you want to do any step by hand:
 
 1. Sets the name, tagline and icon, the Composer package name and the README title with `npm run brand`, then commits and pushes the result. It installs the dependencies first if there are none. See [Branding](#branding).
-2. Runs the `deploy` workflow once so the image exists in `ghcr.io`, and waits for it to be pushed. The workflow's Azure steps fail at this point, which is expected. See [Deploy Workflow](#deploy-workflow).
+2. Runs the `deploy` workflow once so the image exists in `ghcr.io`, and waits for it to be pushed. The run finishes green: it builds and pushes the image, and skips the Azure steps with a notice, because the deploy sign-in is not set up yet. See [Deploy Workflow](#deploy-workflow).
 3. Provisions Azure with `deploy/azure-provision.sh`. The deployed app shows the name and tagline you set. See [Provisioning Azure](#provisioning-azure).
 4. Sets up Microsoft sign-in with `deploy/azure-easyauth-setup.sh`. Until then the app answers HTTP 403 to everyone. See [Signing In To The App (Easy Auth)](#signing-in-to-the-app-easy-auth).
 5. Requires the `ci` status check on `main`, because a merge deploys without waiting for the tests. If `main` already has protection it is left as it is. Where GitHub does not allow it, see the notes below.
@@ -306,7 +306,7 @@ If the build stops with "Expected @voidzero-dev/vite-plus-core@X, but found @voi
 
 `deploy/azure-provision.sh` creates everything an app needs in Azure with one command: a resource group, an Azure SQL server with a serverless database on the free offer, a Container Apps environment, the container app (which scales to zero) and a monthly budget alert. It names everything from the repository name, matching the `deploy` workflow below.
 
-1. Run the `deploy` workflow once from the Actions tab so the image exists in `ghcr.io`. Its Azure steps fail at this point, which is expected.
+1. Run the `deploy` workflow once from the Actions tab so the image exists in `ghcr.io`. The run finishes green, with a notice that the Azure steps were skipped because the deploy sign-in is not set up yet. It builds and pushes the image, which is all this step is for.
 
 2. Log in to Azure:
 
@@ -383,7 +383,7 @@ The scripts in `deploy/` share their naming rules in `deploy/lib.sh`, and the `d
 
 ### Deploy Workflow
 
-The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs in two ways: when a change is merged to `main` (once the repository has opted in, see below), and when you start it by hand from the Actions tab by choosing `deploy` and selecting Run workflow. Until the deploy sign-in above is set up, the build and push work and the Azure login step fails.
+The `deploy` GitHub Actions workflow builds the production image, pushes it to `ghcr.io` and updates an Azure Container App to run it. It runs in two ways: when a change is merged to `main` (once the repository has opted in, see below), and when you start it by hand from the Actions tab by choosing `deploy` and selecting Run workflow. Updating the app needs the deploy sign-in above. A manual run before it is set up builds and pushes the image, skips the Azure steps, and finishes green with a notice naming the missing secrets. A merge that should update the app, because `DEPLOY_ON_MERGE` is on, but has no sign-in set up fails with a clear message, since that is a mistake that should not pass silently.
 
 The workflow takes every name from the repository name, so nothing needs editing per app:
 
