@@ -20,12 +20,26 @@ const BRAND_FILES = [
     'README.md',
 ];
 
+// The icon files these tests start from, written here instead of copied, so they do not
+// depend on which icon an app made from the template has chosen. The rocket's shape is
+// in the SVG so the tests can see it replaced.
+const BRAND_ICON_FIXTURES = [
+    'resources/js/components/AppLogoIcon.vue' => "<script setup lang=\"ts\">\nimport { Rocket } from '@lucide/vue';\n</script>\n\n<template>\n    <Rocket :class=\"className\" v-bind=\"\$attrs\" />\n</template>\n",
+    'public/favicon.svg' => "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n  <path d=\"M12 15v5s3.03-.55 4-2\"/>\n</svg>\n",
+    'public/favicon.ico' => 'fixture favicon.ico',
+    'public/apple-touch-icon.png' => 'fixture apple-touch-icon.png',
+];
+
 beforeEach(function () {
     $this->root = sys_get_temp_dir().'/brand-'.uniqid();
 
     foreach (BRAND_FILES as $file) {
         File::ensureDirectoryExists(dirname("{$this->root}/{$file}"));
         File::copy(base_path($file), "{$this->root}/{$file}");
+    }
+
+    foreach (BRAND_ICON_FIXTURES as $file => $contents) {
+        File::put("{$this->root}/{$file}", $contents);
     }
 
     // A README of its own, so these tests do not depend on what an app made from the template
@@ -179,7 +193,7 @@ test('the picture icons are rebuilt when an image converter is installed', funct
     // An .ico file starts 00 00 01 00, and holds three images. A PNG starts with its signature.
     expect(bin2hex(substr($ico, 0, 6)))->toBe('000001000300')
         ->and(substr($apple, 1, 3))->toBe('PNG')
-        ->and($ico)->not->toBe(File::get(base_path('public/favicon.ico')));
+        ->and($ico)->not->toBe(BRAND_ICON_FIXTURES['public/favicon.ico']);
 })->skip(fn () => (new ExecutableFinder)->find('rsvg-convert') === null, 'rsvg-convert is not installed');
 
 test('the picture icons are left alone, with a note, when there is no image converter', function () {
