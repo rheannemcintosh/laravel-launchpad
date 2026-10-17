@@ -44,6 +44,26 @@ env_example_value() {
   fi
 }
 
+# True when the dotted version $1 is at least $2, comparing each part as a number,
+# so 2.100.0 is newer than 2.79.0 and 18.10.0 newer than 18.3.0. Parts that are
+# missing from $1 count as 0, and parts of $1 beyond those in $2 are ignored.
+# Both may start with a "v", as in v22.16.0.
+version_at_least() {
+  local IFS=. found needed i f n
+  read -r -a found <<<"${1#v}"
+  read -r -a needed <<<"${2#v}"
+  for ((i = 0; i < ${#needed[@]}; i++)); do
+    f="${found[i]:-0}"
+    n="${needed[i]}"
+    if ((10#$f > 10#$n)); then
+      return 0
+    elif ((10#$f < 10#$n)); then
+      return 1
+    fi
+  done
+  return 0
+}
+
 lowercase() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }

@@ -25,7 +25,9 @@
 # question. The icon is a Lucide name from https://lucide.dev/icons.
 #
 # Prerequisites:
-#   - git, node, npm, the gh CLI (gh auth login) and the az CLI (az login).
+#   - git, node 18.3 or newer, npm, the gh CLI 2.25 or newer (gh auth login) and the
+#     az CLI 2.79 or newer (az login). The versions are checked before anything is
+#     changed. rsvg-convert is optional, for the favicon.ico and apple icon.
 #   - A clone whose 'origin' is a GitHub repository, on the main branch.
 #
 # Settings (environment variables):
@@ -57,6 +59,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/lib.sh
 source "$SCRIPT_DIR/lib.sh"
+
+# The oldest versions that the steps below work with, and why. Node 18.3 is where
+# util.parseArgs, which `npm run brand` uses, was added. gh 2.25 is where
+# `gh variable` was added, which the OIDC and teardown scripts use. az 2.79 is what
+# the containerapp extension asks for; an older one installs an older extension that
+# this has not been tried with.
+MIN_NODE="18.3.0"
+MIN_GH="2.25.0"
+MIN_AZ="2.79.0"
 
 POLL_SECONDS="${POLL_SECONDS:-15}"
 WAIT_MINUTES="${WAIT_MINUTES:-30}"
@@ -131,6 +142,22 @@ fi
 for tool in git node npm gh az; do
   command -v "$tool" >/dev/null 2>&1 || fail "'$tool' is not installed or not on the PATH."
 done
+
+# Stops when a tool is older than the version the steps need. A version that cannot
+# be read is reported but does not stop the run, so an unusual build is not refused.
+check_version() {
+  local tool="$1" output="$2" minimum="$3" reason="$4" version
+  version="$(printf '%s' "$output" | grep -oE '[0-9]+(\.[0-9]+)*' | head -1 || true)"
+  if [[ -z "$version" ]]; then
+    say "Could not read the version of $tool, so it was not checked. It needs $minimum or newer."
+  elif ! version_at_least "$version" "$minimum"; then
+    fail "$tool $version is too old: $tool $minimum or newer is needed ($reason). Update $tool and run this again."
+  fi
+}
+
+check_version node "$(node --version 2>/dev/null || true)" "$MIN_NODE" "util.parseArgs, used by npm run brand"
+check_version gh "$(gh --version 2>/dev/null | head -1 || true)" "$MIN_GH" "gh variable, used to turn on deploying after a merge"
+check_version az "$(az version --query '"azure-cli"' --output tsv 2>/dev/null || true)" "$MIN_AZ" "what the containerapp extension needs"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "Run this from inside a clone of the repository."
 cd "$REPO_ROOT"
