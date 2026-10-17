@@ -9,22 +9,30 @@
 // values changes them again, and a run that changes nothing leaves the files as they
 // were. Nothing is written until every input has been checked.
 //
+// With --package it also gives the app its own Composer package name and README title,
+// which the setup command (deploy/bootstrap.sh) does. Without it composer.json and the
+// README are never touched, so running this on the template itself changes neither.
+//
 // It uses only what is already installed: the Lucide package for the icon shapes, and
 // rsvg-convert (when it is on the PATH) for the favicon.ico and apple-touch-icon.png
 // picture files, which cannot be made without an image converter.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-const usage = `Usage: npm run brand -- [--name "My App"] [--tagline "What it does"] [--icon rocket]
+const usage = `Usage: npm run brand -- [--name "My App"] [--tagline "What it does"] [--icon rocket] [--package vendor/app]
 
   --name      The app name, written to APP_NAME in .env and .env.example.
   --tagline   A short line about the app, written to APP_TAGLINE.
   --icon      A Lucide icon name such as rocket, brain or heart-pulse. Browse them at
               https://lucide.dev/icons. Sets the icon used in the app and the browser tab.
+  --package   A Composer package name such as acme/acme-tracker. Renames the package in
+              composer.json, keeps composer.lock in step, and gives the README the --name
+              as its title and the app's name in its example commands.
 
 At least one option is needed.`;
 
@@ -44,6 +52,7 @@ try {
             name: { type: 'string' },
             tagline: { type: 'string' },
             icon: { type: 'string' },
+            package: { type: 'string' },
             // Where the files to change live. Only the tests need this.
             root: { type: 'string' },
             help: { type: 'boolean', short: 'h' },
@@ -59,8 +68,10 @@ if (options.help) {
     process.exit(0);
 }
 
-if (!options.name && !options.tagline && !options.icon) {
-    fail(`Give at least one of --name, --tagline or --icon.\n\n${usage}`);
+if (!options.name && !options.tagline && !options.icon && !options.package) {
+    fail(
+        `Give at least one of --name, --tagline, --icon or --package.\n\n${usage}`,
+    );
 }
 
 const root = resolve(options.root ?? packageRoot);
@@ -96,6 +107,25 @@ const tagline =
     options.tagline === undefined
         ? undefined
         : checkText('tagline', options.tagline);
+
+// A Composer package name, as Composer checks it: lowercase, vendor/name.
+const composerNamePattern =
+    /^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$/;
+
+function checkPackage(value) {
+    if (!composerNamePattern.test(value)) {
+        fail(
+            `"${value}" is not a Composer package name. Use lowercase letters, numbers and ., _ or - in the form vendor/app, such as acme/acme-tracker.`,
+        );
+    }
+
+    return value;
+}
+
+const packageName =
+    options.package === undefined
+        ? undefined
+        : checkPackage(options.package.trim());
 
 function findIcon(input) {
     // "HeartPulse" is accepted as well as "heart-pulse".
@@ -328,6 +358,197 @@ if (icon) {
 }
 
 // ---------------------------------------------------------------------------
+// The Composer package name and the README
+
+// What PHP's json_encode writes with no flags, which is what Composer fingerprints:
+// slashes escaped, anything but plain ASCII as \uXXXX, and an empty array or object
+// both written as [].
+function phpEncode(value) {
+    if (value === null) {
+        return 'null';
+    }
+
+    if (typeof value === 'boolean' || typeof value === 'number') {
+        return String(value);
+    }
+
+    if (typeof value === 'string') {
+        const escapes = {
+            '"': '\\"',
+            '\\': '\\\\',
+            '/': '\\/',
+            '\b': '\\b',
+            '\f': '\\f',
+            '\n': '\\n',
+            '\r': '\\r',
+            '\t': '\\t',
+        };
+        let encoded = '"';
+
+        for (const char of value) {
+            const code = char.codePointAt(0);
+            const unit = (number) =>
+                `\\u${number.toString(16).padStart(4, '0')}`;
+
+            if (char in escapes) {
+                encoded += escapes[char];
+            } else if (code > 0xffff) {
+                const offset = code - 0x10000;
+                encoded +=
+                    unit(0xd800 + (offset >> 10)) +
+                    unit(0xdc00 + (offset & 0x3ff));
+            } else if (code < 0x20 || code >= 0x80) {
+                encoded += unit(code);
+            } else {
+                encoded += char;
+            }
+        }
+
+        return `${encoded}"`;
+    }
+
+    if (Array.isArray(value)) {
+        return value.length === 0
+            ? '[]'
+            : `[${value.map(phpEncode).join(',')}]`;
+    }
+
+    const keys = Object.keys(value);
+
+    return keys.length === 0
+        ? '[]'
+        : `{${keys.map((key) => `${phpEncode(key)}:${phpEncode(value[key])}`).join(',')}}`;
+}
+
+// The fingerprint Composer stores in composer.lock as "content-hash", from the parts
+// of composer.json that decide what gets installed, including the package name.
+function composerContentHash(composer) {
+    const relevant = [
+        'name',
+        'version',
+        'require',
+        'require-dev',
+        'conflict',
+        'replace',
+        'provide',
+        'minimum-stability',
+        'prefer-stable',
+        'repositories',
+        'extra',
+    ];
+    const content = {};
+
+    for (const key of relevant) {
+        if (key in composer) {
+            content[key] = composer[key];
+        }
+    }
+
+    if (composer.config?.platform) {
+        content.config = { platform: composer.config.platform };
+    }
+
+    const sorted = Object.fromEntries(
+        Object.keys(content)
+            .sort()
+            .map((key) => [key, content[key]]),
+    );
+
+    return createHash('md5').update(phpEncode(sorted)).digest('hex');
+}
+
+let projectNotes = [];
+
+if (packageName !== undefined) {
+    // composer.json: only the name line changes, so the file keeps its formatting.
+    const composerText = readRequired('composer.json');
+    let composer;
+
+    try {
+        composer = JSON.parse(composerText);
+    } catch {
+        fail('composer.json is not valid JSON, so it was not changed.');
+    }
+
+    const oldName = composer.name;
+    const nameLine = new RegExp(
+        `^(\\s*"name":\\s*)${JSON.stringify(oldName).replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}`,
+        'm',
+    );
+
+    if (typeof oldName !== 'string' || !nameLine.test(composerText)) {
+        fail(
+            'composer.json has no package name line this command can change, so nothing was changed.',
+        );
+    }
+
+    const renamedText = composerText.replace(
+        nameLine,
+        (_, lead) => `${lead}${JSON.stringify(packageName)}`,
+    );
+
+    plan('composer.json', renamedText);
+
+    // composer.lock stores a fingerprint that includes the name. Left alone it would be
+    // out of date, so it is brought in step, after checking that the current one is the
+    // fingerprint of the current composer.json, which also proves this command reads
+    // the file the way Composer does.
+    if (existsSync(inRoot('composer.lock'))) {
+        const lockText = readRequired('composer.lock');
+        const stored = lockText.match(/"content-hash": "([0-9a-f]{32})"/)?.[1];
+
+        if (!stored || composerContentHash(composer) !== stored) {
+            fail(
+                'composer.lock does not match composer.json, or this command cannot read it, so nothing was changed. Run composer update --lock, then run this again.',
+            );
+        }
+
+        plan(
+            'composer.lock',
+            lockText.replace(
+                /"content-hash": "[0-9a-f]{32}"/,
+                `"content-hash": "${composerContentHash(JSON.parse(renamedText))}"`,
+            ),
+        );
+    } else {
+        projectNotes.push(
+            'composer.lock does not exist, so only composer.json was renamed.',
+        );
+    }
+
+    // The README: its title is the app's name, and the template's own name in its
+    // example commands (inside code blocks only) becomes the app's.
+    if (existsSync(inRoot('README.md'))) {
+        const [, repository] = packageName.split('/');
+        const lines = readRequired('README.md').split('\n');
+        let inCode = false;
+
+        for (let index = 0; index < lines.length; index++) {
+            if (/^\s*```/.test(lines[index])) {
+                inCode = !inCode;
+            } else if (inCode) {
+                lines[index] = lines[index]
+                    .replaceAll(
+                        'rheannemcintosh/laravel-launchpad',
+                        packageName,
+                    )
+                    .replaceAll('laravel-launchpad', repository);
+            }
+        }
+
+        if (name !== undefined && lines[0].startsWith('# ')) {
+            lines[0] = `# ${name}`;
+        } else if (name !== undefined) {
+            projectNotes.push(
+                'The README does not start with a title, so its title was not changed.',
+            );
+        }
+
+        plan('README.md', lines.join('\n'));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Write what changed
 
 for (const { path, content } of changes) {
@@ -342,6 +563,10 @@ for (const { path, content } of changes) {
     console.log(`${same ? 'Unchanged' : 'Updated  '} ${path}`);
 }
 
+for (const note of projectNotes) {
+    console.log(`\n${note}`);
+}
+
 if (iconNote) {
     console.log(`\n${iconNote}`);
 }
@@ -354,7 +579,7 @@ if (icon) {
 
 if (name !== undefined || tagline !== undefined) {
     console.log(
-        '\nThe name and tagline are read when the app runs, so they need no rebuild. The deployed app takes its\n' +
-            'name from APP_TITLE and its tagline from .env.example when deploy/azure-provision.sh runs (see the README).',
+        '\nThe name and tagline are read when the app runs, so they need no rebuild. The deployed app takes both\n' +
+            'from .env.example when deploy/azure-provision.sh runs (see the README).',
     );
 }

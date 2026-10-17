@@ -211,7 +211,7 @@ test('the name, tagline and icon are given to the branding command and committed
     bootstrapRun($this, $full, $password);
 
     expect(bootstrapCalled($this, 'npm run brand'))
-        ->toBe(['npm run brand -- --name Acme Tracker --tagline Track everything. --icon brain']);
+        ->toBe(['npm run brand -- --name Acme Tracker --tagline Track everything. --icon brain --package acme/acme-tracker']);
 
     $commit = Process::path($this->work)->run('git log -1 --format=%s')->output();
 
@@ -238,7 +238,7 @@ test('without options it uses the repository name in title case, the current tag
 
     expect($result->successful())->toBeTrue($result->errorOutput())
         ->and(bootstrapCalled($this, 'npm run brand'))->toBe([
-            'npm run brand -- --name Acme Tracker --tagline A short line about what your app does. --icon rocket',
+            'npm run brand -- --name Acme Tracker --tagline A short line about what your app does. --icon rocket --package acme/acme-tracker',
         ]);
 });
 
@@ -249,13 +249,22 @@ test('the name in .env.example is the default when it has been set already', fun
     bootstrapRun($this, [], $password);
 
     expect(bootstrapCalled($this, 'npm run brand'))
-        ->toBe(['npm run brand -- --name Already Named --tagline Already tagged. --icon rocket']);
+        ->toBe(['npm run brand -- --name Already Named --tagline Already tagged. --icon rocket --package acme/acme-tracker']);
 });
 
 test('a stray APP_TITLE or APP_TAGLINE setting cannot override the name that was set', function () use ($full, $password) {
     bootstrapRun($this, $full, [...$password, 'APP_TITLE' => 'Wrong', 'APP_TAGLINE' => 'Wrong']);
 
     expect(bootstrapCalled($this, 'provision'))->toBe(['provision SQL=S3cret!pw USER= PAT= TITLE= TAGLINE=']);
+});
+
+test('the Composer package name is the owner and repository in lowercase', function () use ($full, $password) {
+    Process::path($this->work)->run('git remote set-url origin git@github.com:Acme-Corp/Acme-Tracker.git')->throw();
+
+    bootstrapRun($this, $full, $password);
+
+    expect(bootstrapCalled($this, 'npm run brand'))
+        ->toBe(['npm run brand -- --name Acme Tracker --tagline Track everything. --icon brain --package acme-corp/acme-tracker']);
 });
 
 test('dependencies are installed first when there are none', function () use ($full, $password) {

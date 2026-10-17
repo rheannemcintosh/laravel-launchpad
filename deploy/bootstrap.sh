@@ -5,7 +5,8 @@
 # and runs the other scripts in this folder in order, so none of the steps below
 # is done by hand:
 #
-#   1. Branding         npm run brand, then commits and pushes the result
+#   1. Branding         npm run brand, which also gives the app its own Composer
+#                       package name and README title, then commits and pushes it
 #   2. First image      starts the deploy workflow and waits for it to push the
 #                       image (its Azure steps fail at this point, by design)
 #   3. Provisioning     deploy/azure-provision.sh
@@ -165,6 +166,8 @@ cd "$REPO_ROOT"
 load_remote
 resolve_app_name
 [[ -n "$REMOTE_OWNER" && -n "$REMOTE_REPO" ]] || fail "The 'origin' remote is not a GitHub repository."
+# The Composer package name is the owner and repository, in lowercase.
+PACKAGE="$(lowercase "$REMOTE_OWNER")/$APP_NAME"
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
 [[ "$branch" == "main" ]] || fail "Run this from the main branch (you are on '$branch'), because that is where the app deploys from."
@@ -236,7 +239,8 @@ fi
 
 say ""
 say "This will:"
-say "  1. Set the name to \"$NAME\", the tagline to \"$TAGLINE\" and the icon to $ICON, then commit and push."
+say "  1. Set the name to \"$NAME\", the tagline to \"$TAGLINE\" and the icon to $ICON, name the Composer"
+say "     package $PACKAGE and the README after the app, then commit and push."
 say "  2. Build the first image with the deploy workflow, unless the app already exists."
 say "  3. Create the Azure resources in $RESOURCE_GROUP."
 say "  4. Set up Microsoft sign-in for the app."
@@ -259,11 +263,11 @@ say "==> $CURRENT_STEP"
 if [[ ! -d node_modules ]]; then
   npm ci
 fi
-npm run brand -- --name "$NAME" --tagline "$TAGLINE" --icon "$ICON"
+npm run brand -- --name "$NAME" --tagline "$TAGLINE" --icon "$ICON" --package "$PACKAGE"
 if [[ -n "$(git status --porcelain)" ]]; then
   git add -A
   git commit -q -m "Set the app name, tagline and icon" \
-    -m "Sets the name to $NAME, the tagline and the icon, with npm run brand, before the first image is built so the app is published with them."
+    -m "Sets the name to $NAME, the tagline, the icon, the Composer package name $PACKAGE and the README title, with npm run brand, before the first image is built so the app is published with them."
   git push origin main
 else
   say "    Nothing changed, so nothing to commit."
