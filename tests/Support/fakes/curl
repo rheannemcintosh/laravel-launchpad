@@ -1,0 +1,46 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * A stand-in for curl, for the Easy Auth script test. See lib.php. It answers the
+ * check that visitors are sent to Microsoft sign-in the way Easy Auth does: a client
+ * that looks like a browser is redirected once the app is set to redirect, and any
+ * other client, such as plain curl, gets 401.
+ */
+
+require __DIR__.'/lib.php';
+
+$args = array_slice($argv, 1);
+$state = fake_load();
+
+fake_log('curl '.implode(' ', array_map(fn (string $arg) => str_contains($arg, ' ') ? "'{$arg}'" : $arg, $args)));
+
+$url = end($args);
+$agent = fake_opt($args, ['-A', '--user-agent']) ?? 'curl/8.0';
+$host = parse_url($url, PHP_URL_HOST);
+
+$app = null;
+foreach ($state['apps'] as $candidate) {
+    if ($candidate['fqdn'] === $host) {
+        $app = $candidate;
+    }
+}
+
+$looksLikeABrowser = str_starts_with($agent, 'Mozilla/');
+$redirecting = $app !== null && ($app['auth']['action'] ?? '') === 'RedirectToLoginPage';
+
+if ($state['curl_not_yet'] > 0) {
+    $state['curl_not_yet']--;
+    $result = '403 ';
+} elseif (getenv('FAKE_CURL_NEVER') === '1' || ! $redirecting) {
+    $result = '403 ';
+} elseif (! $looksLikeABrowser) {
+    $result = '401 ';
+} else {
+    $result = "302 https://login.microsoftonline.com/{$state['account']['tenant']}/oauth2/v2.0/authorize?client_id=x";
+}
+
+fake_save($state);
+
+// The script asks for just the status and the redirect address.
+echo $result;
