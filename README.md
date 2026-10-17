@@ -300,6 +300,16 @@ The font is Instrument Sans, installed from the `@fontsource/instrument-sans` pa
 
 If the build stops with "Expected @voidzero-dev/vite-plus-core@X, but found @voidzero-dev/vite-plus-core@Y", one of the three lines is out of step. TypeScript is held at version 6, and Dependabot skips major TypeScript updates, because version 7 fails the front end build.
 
+### Dependabot
+
+Dependabot opens one pull request a week for each of the PHP packages, the npm packages and the GitHub Actions, and waits five days after a release before proposing it, in case it is withdrawn or broken. The wait is applied to each package separately, so a few things are set up in `.github/dependabot.yml` for packages that have to move as a pair:
+
+- `laravel/wayfinder` is exempt from the wait. It generates the app's TypeScript route types from what the framework registers, so it has to be as new as the framework. Without the exemption the framework can be proposed without the Wayfinder release that understands it, which fails the type check (the framework added the `QUERY` method in 13.35 and Wayfinder learned it in 0.1.22).
+- `vite-plus` and `vite` are skipped, because they must be updated together by hand. See [Updating Vite+](#updating-vite).
+- Major versions of TypeScript are skipped until Vue supports TypeScript 7.
+
+If a Dependabot pull request fails because two packages are out of step, add the one that has to be current to the `exclude` list under `cooldown`, or update both by hand.
+
 ## Deployment
 
 ### Provisioning Azure
