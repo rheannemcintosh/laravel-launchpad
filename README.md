@@ -54,14 +54,14 @@ The name defaults to the repository name in title case, and the icon is a [Lucid
 
 It runs these steps in order, using the scripts described in the sections below, which still work on their own. Use them directly if you want to do any step by hand:
 
-1. Sets the name, tagline and icon with `npm run brand`, then commits and pushes the result. It installs the dependencies first if there are none. See [Branding](#branding).
+1. Sets the name, tagline and icon, the Composer package name and the README title with `npm run brand`, then commits and pushes the result. It installs the dependencies first if there are none. See [Branding](#branding).
 2. Runs the `deploy` workflow once so the image exists in `ghcr.io`, and waits for it to be pushed. The workflow's Azure steps fail at this point, which is expected. See [Deploy Workflow](#deploy-workflow).
 3. Provisions Azure with `deploy/azure-provision.sh`. The deployed app shows the name and tagline you set. See [Provisioning Azure](#provisioning-azure).
 4. Sets up Microsoft sign-in with `deploy/azure-easyauth-setup.sh`. Until then the app answers HTTP 403 to everyone. See [Signing In To The App (Easy Auth)](#signing-in-to-the-app-easy-auth).
 5. Requires the `ci` status check on `main`, because a merge deploys without waiting for the tests. If `main` already has protection it is left as it is. Where GitHub does not allow it, see the notes below.
 6. Sets up the deploy sign-in with `deploy/azure-oidc-setup.sh`, which also turns on [deploying after every merge](#deploy-on-merge). That is left off when `main` could not be protected, so a red pull request cannot be merged and deployed.
 
-`npm run brand` does not rename the `name` in `composer.json`, nor this README, so edit those by hand if you want them to match.
+It also gives the app its own Composer package name (the owner and repository, in lowercase) and its own README title, and puts the app's name in the README's example commands. The rest of this README is still the template's documentation, so rewrite it for your app.
 
 ### What A New Repository Does Not Inherit
 
@@ -265,11 +265,12 @@ npm run brand -- --name "Acme Tracker" --tagline "Track everything." --icon brai
 
 Each option is optional, but at least one is needed. It can be run again whenever you want to change them, and a run that changes nothing leaves the files as they were.
 
-| Option      | What it changes                                                                                                                                                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--name`    | `APP_NAME` in `.env` and `.env.example`. Shown on the home page, the dashboard, the sidebar, the sign-in pages, the browser tab and emails. It is read when the app runs, so it needs no rebuild.                                        |
-| `--tagline` | `APP_TAGLINE` in `.env` and `.env.example`, shown on the home page and the dashboard. Also read when the app runs.                                                                                                                       |
-| `--icon`    | A [Lucide](https://lucide.dev/icons) icon name such as `brain` or `heart-pulse`. It swaps the icon in `resources/js/components/AppLogoIcon.vue` and rebuilds `public/favicon.svg` from the same shapes. Rebuild the front end to see it. |
+| Option      | What it changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--name`    | `APP_NAME` in `.env` and `.env.example`. Shown on the home page, the dashboard, the sidebar, the sign-in pages, the browser tab and emails. It is read when the app runs, so it needs no rebuild.                                                                                                                                                                                                                                                                                   |
+| `--tagline` | `APP_TAGLINE` in `.env` and `.env.example`, shown on the home page and the dashboard. Also read when the app runs.                                                                                                                                                                                                                                                                                                                                                                  |
+| `--package` | A Composer package name such as `acme/acme-tracker`. Renames the package in `composer.json` (only that line), brings the fingerprint in `composer.lock` in step so Composer does not report an out-of-date lock file, makes the README's title the `--name`, and puts the package's repository name in the README's example commands (inside code blocks only). The setup command passes it for you. Without it, `composer.json`, `composer.lock` and the README are never touched. |
+| `--icon`    | A [Lucide](https://lucide.dev/icons) icon name such as `brain` or `heart-pulse`. It swaps the icon in `resources/js/components/AppLogoIcon.vue` and rebuilds `public/favicon.svg` from the same shapes. Rebuild the front end to see it.                                                                                                                                                                                                                                            |
 
 Nothing is written unless every value is valid. An unknown icon name, or a name or tagline containing a double quote, backslash or dollar sign (which would break the `.env` file), stops it with a message and changes nothing. The name and tagline can also be set by hand in `.env`.
 

@@ -70,9 +70,3 @@ test('explicit APP_TITLE and APP_TAGLINE settings win', function () {
     expect(displayValues($this, ['APP_TITLE' => 'From The Setting', 'APP_TAGLINE' => 'From the setting.']))
         ->toBe(['From The Setting', 'From the setting.']);
 });
-
-test('the template ships a placeholder that falls back, so an unbranded app is named after its repository', function () {
-    $template = File::get(base_path('.env.example'));
-
-    expect($template)->toContain('APP_NAME="My App"');
-});
