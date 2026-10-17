@@ -1,0 +1,501 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * A stand-in for the Azure CLI, for the deploy script tests. See lib.php.
+ *
+ * It models only what the scripts in deploy/ use, with the same output the real
+ * commands give for the same queries, and it keeps what it creates in the state
+ * file so a second run sees the first.
+ */
+
+require __DIR__.'/lib.php';
+
+$args = array_slice($argv, 1);
+$state = fake_load();
+
+fake_log('az '.implode(' ', array_map(fn (string $arg) => str_contains($arg, ' ') ? "'{$arg}'" : $arg, $args)));
+
+// The words that name the command, up to the first option.
+$words = [];
+foreach ($args as $arg) {
+    if (str_starts_with($arg, '-')) {
+        break;
+    }
+    $words[] = $arg;
+}
+$command = implode(' ', $words);
+
+$rest = null;
+if ($command === 'rest') {
+    $rest = strtolower(fake_opt($args, ['--method']) ?? 'get');
+    if (fake_should_fail("az rest {$rest}")) {
+        fake_fail('ERROR: (BadRequest) injected failure');
+    }
+} elseif (fake_should_fail("az {$command}")) {
+    fake_fail("ERROR: injected failure of az {$command}");
+}
+
+$query = fake_opt($args, ['--query']);
+$name = fake_opt($args, ['--name', '-n']);
+$group = fake_opt($args, ['--resource-group', '-g']);
+$id = fake_opt($args, ['--id']);
+$output = '';
+
+/** Prints one value per line, the way `-o tsv` does for a list. */
+$lines = fn (array $values): string => implode("\n", $values);
+
+$account = $state['account'];
+
+// Everything but `account show` needs a signed-in user, as the real CLI does.
+if (! $account['logged_in']) {
+    fake_fail("ERROR: Please run 'az login' to setup account.");
+}
+
+/** The registrations named $displayName. */
+$appsNamed = fn (string $displayName): array => array_values(array_filter($state['ad_apps'], fn (array $app) => $app['displayName'] === $displayName));
+
+$findApp = function (string $appId) use (&$state): ?int {
+    foreach ($state['ad_apps'] as $index => $app) {
+        if ($app['appId'] === $appId) {
+            return $index;
+        }
+    }
+
+    return null;
+};
+
+switch ($command) {
+    case 'account show':
+        $output = match ($query) {
+            null => '',
+            'id' => $account['id'],
+            'tenantId' => $account['tenant'],
+            'user.name' => $account['user'],
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'extension add':
+        $state['extensions'][] = $name;
+        break;
+
+    case 'provider show':
+        $namespace = fake_opt($args, ['--namespace']);
+        $output = $state['providers'][$namespace] ?? 'NotRegistered';
+        if ($query !== 'registrationState') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        break;
+
+    case 'provider register':
+        $state['providers'][fake_opt($args, ['--namespace'])] = 'Registered';
+        break;
+
+    case 'group create':
+        $state['groups'][$name] = ['location' => fake_opt($args, ['--location'])];
+        break;
+
+    case 'group show':
+        if (! isset($state['groups'][$name])) {
+            fake_fail("ERROR: (ResourceGroupNotFound) Resource group '{$name}' could not be found.");
+        }
+        $output = match ($query) {
+            null => '',
+            'location' => $state['groups'][$name]['location'],
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'group exists':
+        $output = isset($state['groups'][$name]) ? 'true' : 'false';
+        break;
+
+    case 'group delete':
+        if (getenv('FAKE_GROUP_STAYS') !== '1') {
+            unset($state['groups'][$name], $state['extra_resources'][$name]);
+            foreach (['sql_servers', 'envs', 'apps'] as $kind) {
+                $state[$kind] = array_filter($state[$kind], fn (array $item) => $item['group'] !== $name);
+            }
+        }
+        $state['group_delete_no_wait'] = in_array('--no-wait', $args, true);
+        break;
+
+    case 'resource list':
+        if ($query !== "[?!contains(name, '/')].[name, type]") {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $rows = [];
+        foreach ($state['sql_servers'] as $serverName => $server) {
+            if ($server['group'] === $group) {
+                $rows[] = "{$serverName}\tMicrosoft.Sql/servers";
+            }
+        }
+        foreach ($state['apps'] as $appName => $app) {
+            if ($app['group'] === $group) {
+                $rows[] = "{$appName}\tMicrosoft.App/containerApps";
+            }
+        }
+        foreach ($state['envs'] as $envName => $env) {
+            if ($env['group'] === $group) {
+                $rows[] = "{$envName}\tMicrosoft.App/managedEnvironments";
+            }
+        }
+        foreach ($state['extra_resources'][$group] ?? [] as [$extraName, $extraType]) {
+            $rows[] = "{$extraName}\t{$extraType}";
+        }
+        $output = $lines($rows);
+        break;
+
+    case 'sql server list':
+        if ($query !== '[].name') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $output = $lines(array_keys(array_filter($state['sql_servers'], fn (array $server) => $server['group'] === $group)));
+        break;
+
+    case 'sql server show':
+        if (! isset($state['sql_servers'][$name]) || $state['sql_servers'][$name]['group'] !== $group) {
+            fake_fail("ERROR: (ResourceNotFound) The server '{$name}' was not found.");
+        }
+        $output = match ($query) {
+            null => '',
+            'fullyQualifiedDomainName' => "{$name}.database.windows.net",
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'sql server create':
+        $state['sql_servers'][$name] = [
+            'group' => $group,
+            'location' => fake_opt($args, ['--location']),
+            'admin_user' => fake_opt($args, ['--admin-user']),
+            'admin_password' => fake_opt($args, ['--admin-password']),
+        ];
+        break;
+
+    case 'sql server firewall-rule create':
+        $state['sql_servers'][fake_opt($args, ['--server'])]['firewall'][] = $name;
+        break;
+
+    case 'sql db show':
+        if (! isset($state['sql_dbs'][fake_opt($args, ['-s']).'/'.$name])) {
+            fake_fail("ERROR: (ResourceNotFound) The database '{$name}' was not found.");
+        }
+        break;
+
+    case 'sql db create':
+        $state['sql_dbs'][fake_opt($args, ['--server']).'/'.$name] = ['args' => $args];
+        break;
+
+    case 'containerapp env show':
+        if (! isset($state['envs'][$name])) {
+            fake_fail("ERROR: The containerapp environment '{$name}' does not exist.");
+        }
+        break;
+
+    case 'containerapp env create':
+        $state['envs'][$name] = ['group' => $group, 'args' => $args];
+        break;
+
+    case 'containerapp show':
+        if (! isset($state['apps'][$name])) {
+            fake_fail("ERROR: The containerapp '{$name}' does not exist in resource group '{$group}'.");
+        }
+        $output = match ($query) {
+            null => '',
+            'properties.configuration.ingress.fqdn' => $state['apps'][$name]['fqdn'],
+            'properties.latestRevisionName' => $state['apps'][$name]['revision'],
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'containerapp create':
+        $revision = fake_next($state, "revision-{$name}");
+        $state['apps'][$name] = [
+            'group' => $group,
+            'environment' => fake_opt($args, ['--environment']),
+            'image' => fake_opt($args, ['--image']),
+            'env_vars' => fake_pairs(fake_multi($args, '--env-vars')),
+            'secrets' => fake_pairs(fake_multi($args, '--secrets')),
+            'registry' => fake_opt($args, ['--registry-server']) === null ? null : [
+                'server' => fake_opt($args, ['--registry-server']),
+                'username' => fake_opt($args, ['--registry-username']),
+                'password' => fake_opt($args, ['--registry-password']),
+            ],
+            'auth' => ['enabled' => false, 'action' => '', 'provider' => null],
+            'fqdn' => "{$name}.fake.uksouth.azurecontainerapps.io",
+            'revision' => sprintf('%s--%07d', $name, $revision),
+            'args' => $args,
+        ];
+        break;
+
+    case 'containerapp update':
+        if (! isset($state['apps'][$name])) {
+            fake_fail("ERROR: The containerapp '{$name}' does not exist.");
+        }
+        if (($image = fake_opt($args, ['--image'])) !== null) {
+            $state['apps'][$name]['image'] = $image;
+        }
+        foreach (fake_pairs(fake_multi($args, '--set-env-vars')) as $key => $value) {
+            $state['apps'][$name]['env_vars'][$key] = $value;
+        }
+        $state['apps'][$name]['revision'] = sprintf('%s--%07d', $name, fake_next($state, "revision-{$name}"));
+        break;
+
+    case 'containerapp secret set':
+        foreach (fake_pairs(fake_multi($args, '--secrets')) as $key => $value) {
+            $state['apps'][$name]['secrets'][$key] = $value;
+        }
+        break;
+
+    case 'containerapp secret list':
+        $secret = preg_match("/^\[\?name=='([^']+)'\]\.name$/", (string) $query, $m) ? $m[1] : fake_unsupported("query {$query} for az {$command}");
+        $output = isset($state['apps'][$name]['secrets'][$secret]) ? $secret : '';
+        break;
+
+    case 'containerapp registry set':
+        $state['apps'][$name]['registry'] = [
+            'server' => fake_opt($args, ['--server']),
+            'username' => fake_opt($args, ['--username']),
+            'password' => fake_opt($args, ['--password']),
+        ];
+        break;
+
+    case 'containerapp auth update':
+        $auth = &$state['apps'][$name]['auth'];
+        $auth['enabled'] = fake_opt($args, ['--enabled']) === 'true';
+        $auth['action'] = fake_opt($args, ['--unauthenticated-client-action']);
+        $auth['redirect_provider'] = fake_opt($args, ['--redirect-provider']);
+        $auth['token_store'] = in_array('--token-store', $args, true);
+        break;
+
+    case 'containerapp auth show':
+        if ($query !== 'globalValidation.unauthenticatedClientAction') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $output = $state['apps'][$name]['auth']['action'] ?? '';
+        break;
+
+    case 'containerapp auth microsoft update':
+        $secretFlag = fake_opt($args, ['--client-secret']);
+        $secretName = fake_opt($args, ['--client-secret-name']);
+        if ($secretFlag !== null) {
+            $state['apps'][$name]['secrets']['microsoft-provider-authentication-secret'] = $secretFlag;
+        } elseif (! isset($state['apps'][$name]['secrets'][$secretName])) {
+            fake_fail("ERROR: The secret '{$secretName}' does not exist on {$name}.");
+        }
+        $state['apps'][$name]['auth']['provider'] = [
+            'client_id' => fake_opt($args, ['--client-id']),
+            'issuer' => fake_opt($args, ['--issuer']),
+        ];
+        break;
+
+    case 'containerapp revision restart':
+        $state['restarts'][] = fake_opt($args, ['--revision']);
+        break;
+
+    case 'rest':
+        $url = fake_opt($args, ['--url']);
+        $body = fake_opt($args, ['--body']);
+
+        if (preg_match('#/resourceGroups/([^/]+)/providers/Microsoft\.Consumption/budgets/([^?/]+)#', (string) $url, $m)) {
+            $key = $m[1].'/'.$m[2];
+            if ($rest === 'put') {
+                $state['budgets'][$key] = json_decode((string) $body, true);
+            } elseif ($rest === 'get') {
+                if (! isset($state['budgets'][$key])) {
+                    fake_fail('ERROR: (NotFound) The budget does not exist.');
+                }
+            } elseif ($rest === 'delete') {
+                unset($state['budgets'][$key]);
+            } else {
+                fake_unsupported("az rest {$rest} on a budget");
+            }
+        } elseif (preg_match('#/servicePrincipals/([^/]+)/appRoleAssignedTo$#', (string) $url, $m)) {
+            if ($rest === 'get') {
+                if ($query !== 'value[].principalId') {
+                    fake_unsupported("query {$query} for az rest");
+                }
+                $output = $lines($state['sps_by_object'][$m[1]]['assigned'] ?? []);
+            } elseif ($rest === 'post') {
+                $state['sps_by_object'][$m[1]]['assigned'][] = json_decode((string) $body, true)['principalId'];
+            } else {
+                fake_unsupported("az rest {$rest} on appRoleAssignedTo");
+            }
+        } else {
+            fake_unsupported("az rest url {$url}");
+        }
+        break;
+
+    case 'ad signed-in-user show':
+        if ($query !== 'id') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $output = $account['user_object_id'];
+        break;
+
+    case 'ad app list':
+        if ($query !== '[].appId' || ! preg_match("/^displayName eq '([^']+)'$/", (string) fake_opt($args, ['--filter']), $m)) {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $output = $lines(array_column($appsNamed($m[1]), 'appId'));
+        break;
+
+    case 'ad app create':
+        $n = fake_next($state, 'app');
+        $state['ad_apps'][] = [
+            'appId' => fake_guid(11111111, $n),
+            'displayName' => fake_opt($args, ['--display-name']),
+            'audience' => fake_opt($args, ['--sign-in-audience']) ?? 'AzureADandPersonalMicrosoftAccount',
+            'redirects' => fake_multi($args, '--web-redirect-uris'),
+            'id_tokens' => fake_opt($args, ['--enable-id-token-issuance']) === 'true',
+            'credentials' => [],
+            'federated' => [],
+        ];
+        $output = $state['ad_apps'][array_key_last($state['ad_apps'])]['appId'];
+        break;
+
+    case 'ad app show':
+        $app = $state['ad_apps'][$findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.")];
+        $output = match ($query) {
+            'signInAudience' => $app['audience'],
+            'web.redirectUris' => $lines($app['redirects']),
+            'web.implicitGrantSettings.enableIdTokenIssuance' => $app['id_tokens'] ? 'true' : 'false',
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'ad app update':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        if (in_array('--web-redirect-uris', $args, true)) {
+            $state['ad_apps'][$index]['redirects'] = fake_multi($args, '--web-redirect-uris');
+        }
+        if (($value = fake_opt($args, ['--enable-id-token-issuance'])) !== null) {
+            $state['ad_apps'][$index]['id_tokens'] = $value === 'true';
+        }
+        if (($value = fake_opt($args, ['--sign-in-audience'])) !== null) {
+            $state['ad_apps'][$index]['audience'] = $value;
+        }
+        break;
+
+    case 'ad app delete':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        unset($state['sps'][$id]);
+        array_splice($state['ad_apps'], $index, 1);
+        $state['deleted_apps'][] = $id;
+        break;
+
+    case 'ad app credential list':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        $matching = array_values(array_filter($state['ad_apps'][$index]['credentials'], fn (array $c) => $c['displayName'] === 'easyauth'));
+        $output = match ($query) {
+            "[?displayName=='easyauth'].[keyId, endDateTime]" => $lines(array_map(fn (array $c) => "{$c['keyId']}\t{$c['endDateTime']}", $matching)),
+            "[?displayName=='easyauth'].endDateTime | [0]" => $matching[0]['endDateTime'] ?? '',
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'ad app credential reset':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        $n = fake_next($state, 'credential');
+        $years = (int) fake_opt($args, ['--years']);
+        $state['ad_apps'][$index]['credentials'][] = [
+            'keyId' => fake_guid(22222222, $n),
+            'displayName' => fake_opt($args, ['--display-name']),
+            'endDateTime' => gmdate('Y-m-d\TH:i:s\Z', strtotime("+{$years} years")),
+            'password' => "FAKE-CLIENT-SECRET-{$n}",
+        ];
+        $state['ad_apps'][$index]['append'] = in_array('--append', $args, true);
+        if ($query !== 'password') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $output = "FAKE-CLIENT-SECRET-{$n}";
+        break;
+
+    case 'ad app credential delete':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        $keyId = fake_opt($args, ['--key-id']);
+        $state['ad_apps'][$index]['credentials'] = array_values(array_filter($state['ad_apps'][$index]['credentials'], fn (array $c) => $c['keyId'] !== $keyId));
+        break;
+
+    case 'ad app federated-credential list':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        $credential = preg_match("/^\[\?name=='([^']+)'\]\.subject \| \[0\]$/", (string) $query, $m) ? $m[1] : fake_unsupported("query {$query} for az {$command}");
+        $output = $state['ad_apps'][$index]['federated'][$credential]['subject'] ?? '';
+        break;
+
+    case 'ad app federated-credential create':
+    case 'ad app federated-credential update':
+        $index = $findApp((string) $id) ?? fake_fail("ERROR: Resource '{$id}' does not exist.");
+        $parameters = json_decode((string) fake_opt($args, ['--parameters']), true);
+        $state['ad_apps'][$index]['federated'][$parameters['name']] = $parameters;
+        break;
+
+    case 'ad sp show':
+        if (! isset($state['sps'][$id])) {
+            fake_fail("ERROR: Resource '{$id}' does not exist or one of its queried reference-property objects are not present.");
+        }
+        $output = match ($query) {
+            'id' => $state['sps'][$id]['id'],
+            'appRoleAssignmentRequired' => $state['sps'][$id]['assignment_required'] ? 'true' : 'false',
+            default => fake_unsupported("query {$query} for az {$command}"),
+        };
+        break;
+
+    case 'ad sp create':
+        $n = fake_next($state, 'sp');
+        $state['sps'][$id] = ['id' => fake_guid(33333333, $n), 'assignment_required' => false];
+        $output = $state['sps'][$id]['id'];
+        break;
+
+    case 'ad sp update':
+        if (! isset($state['sps'][$id])) {
+            fake_fail("ERROR: Resource '{$id}' does not exist.");
+        }
+        if (fake_opt($args, ['--set']) === 'appRoleAssignmentRequired=true') {
+            $state['sps'][$id]['assignment_required'] = true;
+        }
+        break;
+
+    case 'role assignment list':
+        if ($query !== '[0].id') {
+            fake_unsupported("query {$query} for az {$command}");
+        }
+        $assignee = fake_opt($args, ['--assignee']);
+        $role = fake_opt($args, ['--role']);
+        $scope = fake_opt($args, ['--scope']);
+        foreach ($state['roles'] as $entry) {
+            if ($entry['assignee'] === $assignee && $entry['role'] === $role && $entry['scope'] === $scope) {
+                $output = $entry['id'];
+                break;
+            }
+        }
+        break;
+
+    case 'role assignment create':
+        if ($state['role_create_failures'] > 0) {
+            $state['role_create_failures']--;
+            fake_save($state);
+            fake_fail('ERROR: Cannot find user or service principal in graph database. Not replicated yet.');
+        }
+        $n = fake_next($state, 'role');
+        $state['roles'][] = [
+            'id' => "role-assignment-{$n}",
+            'assignee' => fake_opt($args, ['--assignee-object-id']),
+            'principal_type' => fake_opt($args, ['--assignee-principal-type']),
+            'role' => fake_opt($args, ['--role']),
+            'scope' => fake_opt($args, ['--scope']),
+        ];
+        break;
+
+    default:
+        fake_unsupported("az command '{$command}'");
+}
+
+fake_save($state);
+
+$mode = fake_opt($args, ['--output', '-o']);
+if ($output !== '' && $mode !== 'none') {
+    echo $output."\n";
+}

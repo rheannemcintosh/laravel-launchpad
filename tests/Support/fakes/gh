@@ -1,0 +1,75 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * A stand-in for the GitHub CLI, for the deploy script tests. See lib.php. It covers
+ * the repository secrets and variables, and the OIDC subject, that the scripts in
+ * deploy/ use.
+ */
+
+require __DIR__.'/lib.php';
+
+$args = array_slice($argv, 1);
+$state = fake_load();
+
+fake_log('gh '.implode(' ', array_map(fn (string $arg) => str_contains($arg, ' ') ? "'{$arg}'" : $arg, $args)));
+
+$call = trim(($args[0] ?? '').' '.($args[1] ?? ''));
+
+// FAKE_FAIL=gh makes every call fail, as when gh is not logged in.
+if (fake_should_fail("gh {$call}")) {
+    fake_fail("gh: injected failure of {$call}", 1);
+}
+
+$repo = fake_opt($args, ['--repo']);
+$github = &$state['github'];
+$output = '';
+
+switch ($call) {
+    case 'secret set':
+        $github['secrets'][$args[2]] = fake_opt($args, ['--body']);
+        break;
+
+    case 'secret list':
+        if (fake_opt($args, ['--jq']) !== '.[].name') {
+            fake_unsupported('jq for gh secret list');
+        }
+        $output = implode("\n", array_keys($github['secrets']));
+        break;
+
+    case 'secret delete':
+        unset($github['secrets'][$args[2]]);
+        break;
+
+    case 'variable set':
+        $github['variables'][$args[2]] = fake_opt($args, ['--body']);
+        break;
+
+    case 'variable list':
+        if (fake_opt($args, ['--jq']) !== '.[].name') {
+            fake_unsupported('jq for gh variable list');
+        }
+        $output = implode("\n", array_keys($github['variables']));
+        break;
+
+    case 'variable delete':
+        unset($github['variables'][$args[2]]);
+        break;
+
+    default:
+        if (($args[0] ?? '') === 'api' && preg_match('#^repos/[^/]+/[^/]+/actions/oidc/customization/sub$#', $args[1] ?? '')) {
+            if (fake_opt($args, ['--jq']) !== '.sub_claim_prefix // empty') {
+                fake_unsupported('jq for the OIDC subject');
+            }
+            $output = $github['oidc_prefix'];
+            break;
+        }
+
+        fake_unsupported("gh command '{$call}'");
+}
+
+fake_save($state);
+
+if ($output !== '') {
+    echo $output."\n";
+}

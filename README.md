@@ -198,6 +198,10 @@ The tests run against the `laravel_testing` database, so they need the environme
     ./vendor/bin/sail npm run check:fix
     ```
 
+The scripts in `deploy/` are tested without Azure or GitHub. The tests in `tests/Feature/Deploy` run the real scripts in a scratch git repository, with stand-ins for `az`, `gh` and `curl` in `tests/Support/fakes`. The stand-ins remember what they were asked to create in a small JSON file, so a first run, a re-run and a teardown all see consistent results, and they log every call. They only know the commands and queries the scripts use. If you change a script to use another command or query, its test fails with `fake: unsupported ...` (exit code 97), which means the stand-in needs teaching the new command, and the test then pins down what the script should do with it.
+
+These tests start many small processes, so they take about a minute of the full run.
+
 ### Production Image
 
 The `Dockerfile` in the repo root builds the image that gets deployed, separate from the Sail development image in `docker/8.4`. A first stage installs the production PHP dependencies and builds the frontend. A second stage copies the results into a smaller runtime image with nginx, php-fpm and the SQL Server drivers. The container runs as a non-root user and serves the app on port `8080`. On start it caches the config, routes and views, links storage and runs the migrations.
