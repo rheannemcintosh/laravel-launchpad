@@ -6,6 +6,15 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 5
+      # laravel/wayfinder generates the app's TypeScript route types from what the
+      # framework registers, so it has to be as new as the framework. The wait is applied
+      # to each package separately, so with it a framework release can be proposed
+      # without the Wayfinder release that understands it (framework 13.35 added the
+      # QUERY method, Wayfinder 0.1.22 added support for it) and the type check fails.
+      # Packages listed here are updated as soon as a release exists, with the rest of
+      # the group.
+      exclude:
+        - "laravel/wayfinder"
     groups:
       composer:
         patterns:
